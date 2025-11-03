@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.security.Permissions;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -42,7 +41,7 @@ public class Role extends AuditableEntity {
             joinColumns = @JoinColumn(name = "role_id"),
             inverseJoinColumns = @JoinColumn(name = "permission_id")
     )
-    private Set<Permissions> permissions = new HashSet<>();
+    private Set<Permission> permissions = new HashSet<>();
 
     /**
      * 'mappedBy' indicates that the 'roles' field in the User entity
