@@ -1,0 +1,54 @@
+package com.project.edusync.adm.model.entity;
+
+import com.project.edusync.common.model.AuditableEntity;
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * Represents a specific section of a class (e.g., "Grade 10 - Section A").
+ *
+ * This entity extends AuditableEntity to gain ID (Long), UUID,
+ * and audit timestamp fields.
+ *
+ * Relationships will be joined using the inherited 'id' (Long) primary key.
+ */
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true, exclude = {"academicClass", "schedules", "constraints"}) // Exclude relationships
+@ToString(callSuper = true, exclude = {"academicClass", "schedules", "constraints"}) // Exclude lazy relationships
+@Entity
+@Table(name = "sections")
+public class Section extends AuditableEntity {
+
+    // The @Id (Long id) and 'uuid' are inherited from AuditableEntity.
+
+    @Column(name = "section_name", nullable = false, length = 100)
+    private String sectionName;
+
+    // --- Relationships ---
+
+    /**
+     * The class this section belongs to (e.g., "Grade 10").
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "class_id", nullable = false) // This joins on the 'id' column of the 'classes' table
+    private AcademicClass academicClass;
+
+    /**
+     * All schedule entries for this specific section.
+     */
+    @OneToMany(mappedBy = "section", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Set<Schedule> schedules = new HashSet<>();
+
+    /**
+     * All constraints that apply to this specific section.
+     */
+    @OneToMany(mappedBy = "section", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private Set<AcademicConstraint> academicConstraints = new HashSet<>();
+
+}
