@@ -44,7 +44,7 @@ public class AbsenceDocumentation{
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", length = 10, nullable = false)
-    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING; // Use NEW ENUM
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
 
     @Column(name = "reviewer_notes", columnDefinition = "TEXT")
     private String reviewerNotes;
