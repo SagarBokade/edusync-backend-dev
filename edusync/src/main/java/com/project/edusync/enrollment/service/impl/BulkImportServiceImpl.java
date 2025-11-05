@@ -60,9 +60,7 @@ public class BulkImportServiceImpl implements BulkImportService {
     private final StaffRepository staffRepository;
     private final SectionRepository sectionRepository;
     private final PasswordEncoder passwordEncoder;
-    private final CsvValidationHelper validationHelper; // <-- ADDED HELPER DEPENDENCY
-
-    // --- NO CONSTRUCTOR NEEDED ---
+    private final CsvValidationHelper validationHelper;
 
     @Override
     public BulkImportReportDTO importUsers(MultipartFile file, String userType) throws IOException {
