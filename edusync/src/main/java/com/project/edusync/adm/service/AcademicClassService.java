@@ -28,4 +28,10 @@ public interface AcademicClassService {
     Set<SectionResponseDto> getAllSectionsForClass(UUID classId);
 
     SectionResponseDto getSectionById(UUID sectionId);
+
+    SectionResponseDto updateSection(UUID sectionId, SectionRequestDto sectionRequestDto);
+
+    void deleteSection(UUID sectionId);
 }
+
+

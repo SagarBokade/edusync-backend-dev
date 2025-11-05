@@ -13,4 +13,10 @@ public interface SectionRepository extends JpaRepository<Section, Long> {
 
     @Query("SELECT s FROM Section s where s.uuid = :classId")
     Optional<Section> findById(UUID sectionId);
+
+    @Query("SELECT s from Section s Where s.uuid = :sectionId")
+    boolean existsById(UUID sectionId);
+
+    @Query("UPDATE Section s SET s.isActive = false WHERE s.uuid = :sectionId")
+    void softDeleteById(UUID sectionId);
 }

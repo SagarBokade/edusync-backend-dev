@@ -98,4 +98,19 @@ public class AcademicClassController {
         SectionResponseDto section = academicClassService.getSectionById(sectionId);
         return ResponseEntity.ok(section);
     }
+
+    @PutMapping("/sections/{sectionId}")
+    public ResponseEntity<SectionResponseDto> updateSection(
+            @PathVariable UUID sectionId,
+            @Valid @RequestBody SectionRequestDto requestDto) {
+
+        SectionResponseDto updatedSection = academicClassService.updateSection(sectionId, requestDto);
+        return ResponseEntity.ok(updatedSection);
+    }
+
+    @DeleteMapping("/sections/{sectionId}")
+    public ResponseEntity<Void> deleteSection(@PathVariable UUID sectionId) {
+        academicClassService.deleteSection(sectionId);
+        return ResponseEntity.noContent().build();
+    }
 }

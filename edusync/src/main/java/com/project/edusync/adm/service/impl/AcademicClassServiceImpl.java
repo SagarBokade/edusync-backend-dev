@@ -131,6 +131,33 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         return toSectionResponseDto(section); // Use private helper
     }
 
+    @Override
+    public SectionResponseDto updateSection(UUID sectionId, SectionRequestDto sectionRequestDto) {
+        log.info("Attempting to update section with id: {}", sectionId);
+        Section existingSection = sectionRepository.findById(sectionId)
+                .orElseThrow(() -> {
+                    log.warn("Section with id {} not found",sectionId);
+                    return new RuntimeException("no such section found");
+                });
+        existingSection.setSectionName(sectionRequestDto.getSectionName());
+
+        Section updatedSection = sectionRepository.save(existingSection);
+        log.info("Section with id {} updated successfully", updatedSection.getId());
+
+        return toSectionResponseDto(updatedSection);
+    }
+
+    @Override
+    public void deleteSection(UUID sectionId) {
+        log.info("Attempting to delete section with id: {}", sectionId);
+        if (!sectionRepository.existsById(sectionId)) {
+            log.warn("Failed to delete. Section not found with id: {}", sectionId);
+            throw new RuntimeException("No such section found");
+        }
+        sectionRepository.softDeleteById(sectionId);;
+        log.info("Section with id {} deleted successfully", sectionId);
+    }
+
     private AcademicClassResponseDto toClassResponseDto(AcademicClass entity) {
         if (entity == null) return null;
         return AcademicClassResponseDto.builder()
