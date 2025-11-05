@@ -2,8 +2,10 @@ package com.project.edusync.finance.service.implementation;
 
 import com.project.edusync.common.exception.finance.InvalidPaymentOperationException;
 import com.project.edusync.common.exception.finance.InvoiceNotFoundException;
+import com.project.edusync.common.exception.finance.PaymentNotFoundException;
 import com.project.edusync.common.exception.finance.StudentNotFoundException;
 import com.project.edusync.finance.dto.payment.PaymentResponseDTO;
+import com.project.edusync.finance.dto.payment.PaymentUpdateDTO;
 import com.project.edusync.finance.dto.payment.RecordOfflinePaymentDTO;
 import com.project.edusync.finance.mapper.PaymentMapper;
 import com.project.edusync.finance.model.entity.Invoice;
@@ -17,6 +19,8 @@ import com.project.edusync.uis.model.entity.Student;
 import com.project.edusync.uis.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -91,4 +95,43 @@ public class PaymentServiceImpl implements PaymentService {
         // 6. Return the DTO for the new payment
         return paymentMapper.toDto(savedPayment);
     }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PaymentResponseDTO> getAllPayments(Pageable pageable) {
+        Page<Payment> paymentPage = paymentRepository.findAll(pageable);
+        return paymentPage.map(paymentMapper::toDto);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentResponseDTO getPaymentById(Long paymentId) {
+        Payment payment = findPaymentById(paymentId);
+        return paymentMapper.toDto(payment);
+    }
+
+    @Override
+    @Transactional
+    public PaymentResponseDTO updatePayment(Long paymentId, PaymentUpdateDTO updateDTO) {
+        // 1. Find the existing payment
+        Payment existingPayment = findPaymentById(paymentId);
+
+        // 2. Use ModelMapper to apply the non-null updates from the DTO
+        modelMapper.map(updateDTO, existingPayment);
+        // Note: We might need to configure ModelMapper to skip nulls if
+        // we want this to be a PATCH, but for a PUT this is fine.
+
+        // 3. Save the updated entity
+        Payment updatedPayment = paymentRepository.save(existingPayment);
+
+        // 4. Return the response DTO
+        return paymentMapper.toDto(updatedPayment);
+    }
+
+    private Payment findPaymentById(Long paymentId) {
+        return paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found with Payment ID: " + paymentId));
+    }
+
 }

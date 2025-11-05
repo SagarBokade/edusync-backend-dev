@@ -1,10 +1,13 @@
 package com.project.edusync.finance.controller;
 
 import com.project.edusync.finance.dto.payment.PaymentResponseDTO;
+import com.project.edusync.finance.dto.payment.PaymentUpdateDTO;
 import com.project.edusync.finance.dto.payment.RecordOfflinePaymentDTO;
 import com.project.edusync.finance.service.PaymentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,5 +29,40 @@ public class PaymentController {
 
         PaymentResponseDTO response = paymentService.recordOfflinePayment(createDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    /**
+     * GET /api/v1/finance/payments
+     * Retrieves a paginated list of all payment transactions.
+     * e.g., ?page=0&size=10&sort=paymentDate,desc
+     */
+    @GetMapping
+    public ResponseEntity<Page<PaymentResponseDTO>> getAllPayments(Pageable pageable) {
+        Page<PaymentResponseDTO> pageResponse = paymentService.getAllPayments(pageable);
+        return new ResponseEntity<>(pageResponse, HttpStatus.OK);
+    }
+
+
+    /**
+     * GET /api/v1/finance/payments/{paymentId}
+     * Retrieves details for a single payment transaction.
+     */
+    @GetMapping("/{paymentId}")
+    public ResponseEntity<PaymentResponseDTO> getPaymentById(@PathVariable Long paymentId) {
+        PaymentResponseDTO response = paymentService.getPaymentById(paymentId);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    /**
+     * PUT /api/v1/finance/payments/{paymentId}
+     * Updates an existing payment record (e.g., to add notes, update check status).
+     */
+    @PutMapping("/{paymentId}")
+    public ResponseEntity<PaymentResponseDTO> updatePayment(
+            @PathVariable Long paymentId,
+            @Valid @RequestBody PaymentUpdateDTO updateDTO) {
+
+        PaymentResponseDTO response = paymentService.updatePayment(paymentId, updateDTO);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 }
