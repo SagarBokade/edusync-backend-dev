@@ -2,8 +2,10 @@ package com.project.edusync.enrollment.controller;
 
 import com.project.edusync.enrollment.service.BulkImportService;
 import com.project.edusync.enrollment.model.dto.BulkImportReportDTO;
+import io.swagger.v3.oas.annotations.Operation;
+import lombok.AllArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -14,15 +16,11 @@ import java.io.IOException;
  * This endpoint is secured and accessible only to administrative roles.
  */
 @RestController
-@RequestMapping("/api/v1/bulk-import")
+@AllArgsConstructor
+@RequestMapping("${api.url}/auth/bulk-import")
 public class BulkImportController {
 
     private final BulkImportService bulkImportService;
-
-    // Use constructor injection - this is a best practice.
-    public BulkImportController(BulkImportService bulkImportService) {
-        this.bulkImportService = bulkImportService;
-    }
 
     /**
      * Handles the CSV file upload for bulk user registration.
@@ -31,8 +29,8 @@ public class BulkImportController {
      * @param file     The multipart CSV file containing user data.
      * @return A ResponseEntity containing a BulkImportReportDTO with the results.
      */
-    @PostMapping("/{userType}")
-    @PreAuthorize("hasAuthority('ROLE_SCHOOL_ADMIN') or hasAuthority('ROLE_SUPER_ADMIN')")
+    @PostMapping(value = "/{userType}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Import users from CSV")
     public ResponseEntity<BulkImportReportDTO> handleBulkImport(
             @PathVariable String userType,
             @RequestParam("file") MultipartFile file) {
