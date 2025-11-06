@@ -2,26 +2,39 @@ package com.project.edusync.ams.model.repository;
 
 import com.project.edusync.ams.model.entity.AbsenceDocumentation;
 import com.project.edusync.ams.model.enums.ApprovalStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
-
+@Repository
 public interface AbsenceDocumentationRepository extends JpaRepository<AbsenceDocumentation, Long> {
 
     /**
-     * Finds documentation by the dailyAttendanceId.
-     * Note: Since dailyAttendanceId is the PK, this is functionally the same as findById.
+     * Retrieves all absence documentation records that require review (PENDING).
+     * This powers the 'Absence Review Queue' for administrative staff.
      */
-    Optional<AbsenceDocumentation> findByDailyAttendanceId(Long dailyAttendanceId);
+    Page<AbsenceDocumentation> findByApprovalStatusOrderByCreatedAtAsc(
+            ApprovalStatus approvalStatus,
+            Pageable pageable);
 
     /**
-     * Finds all submissions that are currently PENDING for administrator review.
+     * Finds documentation submitted by a specific user (e.g., a parent/guardian).
      */
-    List<AbsenceDocumentation> findByApprovalStatus(ApprovalStatus approvalStatus);
+    Page<AbsenceDocumentation> findBySubmittedByUserIdOrderByCreatedAtDesc(
+            Long submittedByUserId,
+            Pageable pageable);
 
     /**
-     * Finds all documentation submitted by a specific parent/guardian user ID.
+     * Finds documentation approved by a specific staff member.
      */
-    List<AbsenceDocumentation> findBySubmittedByUserId(Long submittedByUserId);
+    Page<AbsenceDocumentation> findByApprovedByStaffIdOrderByUpdatedAtDesc(
+            Long approvedByStaffId,
+            Pageable pageable);
+
+    /**
+     * Since the PK is shared, we can use the dailyAttendanceId to find the documentation.
+     * This is useful for checking if an excuse has been submitted for a specific absence.
+     */
+//    Optional<AbsenceDocumentation> findById(Long dailyAttendanceId);
 }

@@ -13,7 +13,7 @@ import java.time.LocalTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class AmsStaffDailyAttendanceResponse {
+public class StaffAttendanceResponseDTO {
 
     private Long staffAttendanceId;
     private Long staffId;

@@ -34,4 +34,7 @@ public class AttendanceType extends AuditableEntity {
 
     @Column(name = "color_code", length = 7)
     private String colorCode; // Hex color for UI display
+
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
 }

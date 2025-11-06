@@ -1,6 +1,7 @@
 package com.project.edusync.ams.model.entity;
 
 import com.project.edusync.ams.model.enums.ApprovalStatus;
+import com.project.edusync.common.model.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,7 +12,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class AbsenceDocumentation{
+public class AbsenceDocumentation extends AuditableEntity {
 
     // id (as documentation_id), uuid, and audit fields are inherited.
 
