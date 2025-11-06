@@ -1,5 +1,6 @@
 package com.project.edusync.adm.service.impl;
 
+import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.AcademicClassRequestDto;
 import com.project.edusync.adm.model.dto.request.SectionRequestDto;
 import com.project.edusync.adm.model.dto.response.AcademicClassResponseDto;
@@ -35,9 +36,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         AcademicClass savedClass = academicClassRepository.save(newClass);
         log.info("Class {} created successfully", savedClass.getName());
 
-        return AcademicClassResponseDto.builder()
-                .name(savedClass.getName())
-                .build();
+        return toClassResponseDto(savedClass);
     }
 
     @Override
@@ -54,7 +53,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         AcademicClass academicClass = academicClassRepository.findById(classId)
                 .orElseThrow(() -> {
                     log.warn("No class with id {} found", classId);
-                    return new RuntimeException("No resource found");
+                    return new ResourceNotFoundException("No class found with id: " + classId);
                 });
         return toClassResponseDto(academicClass); // Use private helper
     }
@@ -80,7 +79,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         log.info("Attempting to delete class with id: {}", classId);
         if (!academicClassRepository.existsById(classId)) {
             log.warn("Failed to delete. Class not found with id: {}", classId);
-            throw new RuntimeException("AcademicClass id: " + classId + " not found");
+            throw new ResourceNotFoundException("AcademicClass id: " + classId + " not found");
         }
         // Add logic here to check for child sections if cascade delete is not on
         academicClassRepository.softDeleteById(classId);
@@ -93,7 +92,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         AcademicClass parentClass = academicClassRepository.findById(classId)
                 .orElseThrow(() -> {
                     log.warn("class with id {} not found",classId);
-                    return new RuntimeException("class not found");
+                    return new ResourceNotFoundException("Cannot add section as class with id " + classId + " not found");
                 });
 
         Section newSection = new Section();
@@ -112,8 +111,8 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         log.info("Fetching all sections for class id: {}", classId);
         AcademicClass parentClass = academicClassRepository.findById(classId)
                 .orElseThrow(() -> {
-                    log.warn("No class with id {} found", classId);
-                    return new RuntimeException("no class found");
+                    log.warn("No class with id {} found ", classId);
+                    return new ResourceNotFoundException("No class found with id: " + classId);
                 });
         return parentClass.getSections().stream()
                 .map(this::toSectionResponseDto) // Use private helper
@@ -125,7 +124,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         log.info("Fetching section with id: {}", sectionId);
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> {
-                    log.warn("Section with id {} not found",sectionId);
+                    log.warn("Section with id {} not found ",sectionId);
                     return new RuntimeException("no such section found");
                 });
         return toSectionResponseDto(section); // Use private helper
@@ -137,7 +136,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         Section existingSection = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> {
                     log.warn("Section with id {} not found",sectionId);
-                    return new RuntimeException("no such section found");
+                    return new ResourceNotFoundException("No section with id: " + sectionId);
                 });
         existingSection.setSectionName(sectionRequestDto.getSectionName());
 
@@ -152,7 +151,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         log.info("Attempting to delete section with id: {}", sectionId);
         if (!sectionRepository.existsById(sectionId)) {
             log.warn("Failed to delete. Section not found with id: {}", sectionId);
-            throw new RuntimeException("No such section found");
+            throw new ResourceNotFoundException("cannot delete as section with id: " + sectionId + " not found");
         }
         sectionRepository.softDeleteById(sectionId);;
         log.info("Section with id {} deleted successfully", sectionId);

@@ -1,5 +1,7 @@
 package com.project.edusync.adm.service.impl;
 
+import com.project.edusync.adm.exception.DuplicateEntryException;
+import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.RoomRequestDto;
 import com.project.edusync.adm.model.dto.response.RoomResponseDto;
 import com.project.edusync.adm.model.entity.Room;
@@ -22,14 +24,13 @@ public class RoomServiceImpl implements RoomService {
     private final RoomRepository roomRepository;
 
     @Override
-    @Transactional
     public RoomResponseDto addRoom(RoomRequestDto roomRequestDto) {
         log.info("Attempting to create a new room with name: {}", roomRequestDto.getName());
 
         // Best Practice: Validate for uniqueness
         if (roomRepository.existsByName(roomRequestDto.getName())) {
             log.warn("Room creation failed. Name '{}' already exists.", roomRequestDto.getName());
-            throw new RuntimeException("Room with name " + roomRequestDto.getName() + " already exists.");
+            throw new DuplicateEntryException("Room with name " + roomRequestDto.getName() + " already exists.");
         }
 
         Room newRoom = new Room();
@@ -44,7 +45,6 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<RoomResponseDto> getAllRooms() {
         log.info("Fetching all active rooms");
         return roomRepository.findAll().stream()
@@ -54,13 +54,12 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public RoomResponseDto getRoomById(UUID roomId) {
         log.info("Fetching room with id: {}", roomId);
         Room room = roomRepository.findActiveById(roomId)
                 .orElseThrow(() -> {
                     log.warn("No active room with id {} found", roomId);
-                    return new RuntimeException("No resource found with id: " + roomId);
+                    return new ResourceNotFoundException("No resource found with id: " + roomId);
                 });
         return toRoomResponseDto(room);
     }
@@ -72,14 +71,14 @@ public class RoomServiceImpl implements RoomService {
         Room existingRoom = roomRepository.findActiveById(roomId)
                 .orElseThrow(() -> {
                     log.warn("No active room with id {} to update", roomId);
-                    return new RuntimeException("No resource found to update with id: " + roomId);
+                    return new ResourceNotFoundException("No resource found to update with id: " + roomId);
                 });
 
-        // Best Practice: Check uniqueness of name only if it's being changed
+        // Check uniqueness of name only if it's being changed
         if (!existingRoom.getName().equals(roomRequestDto.getName())) {
             if (roomRepository.existsByNameAndUuidNot(roomRequestDto.getName(), roomId)) {
                 log.warn("Room update failed. Name '{}' already exists for another room.", roomRequestDto.getName());
-                throw new RuntimeException("Room with name " + roomRequestDto.getName() + " already exists.");
+                throw new DuplicateEntryException("Room with name " + roomRequestDto.getName() + " already exists.");
             }
         }
 
@@ -98,7 +97,7 @@ public class RoomServiceImpl implements RoomService {
         log.info("Attempting to soft delete room with id: {}", roomId);
         if (!roomRepository.existsActiveById(roomId)) {
             log.warn("Failed to delete. Room not found with id: {}", roomId);
-            throw new RuntimeException("Room id: " + roomId + " not found.");
+            throw new ResourceNotFoundException("Room id: " + roomId + " not found.");
         }
 
         roomRepository.softDeleteById(roomId);

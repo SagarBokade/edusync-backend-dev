@@ -1,5 +1,7 @@
 package com.project.edusync.adm.service.impl;
 
+import com.project.edusync.adm.exception.AlreadyBookedException;
+import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.ScheduleRequestDto;
 import com.project.edusync.adm.model.dto.response.ScheduleResponseDto;
 import com.project.edusync.adm.model.entity.*;
@@ -31,12 +33,11 @@ public class ScheduleServiceImpl implements ScheduleService {
 
 
     @Override
-    @Transactional(readOnly = true)
     public List<ScheduleResponseDto> getScheduleForSection(UUID sectionId) {
         log.info("Fetching schedule for section id: {}", sectionId);
         if (!sectionRepository.existsById(sectionId)) {
             log.warn("Section with id {} not found", sectionId);
-            throw new RuntimeException("No section resource found with id: " + sectionId);
+            throw new ResourceNotFoundException("No section resource found with id: " + sectionId);
         }
         List<Schedule> schedules = scheduleRepository.findAllActiveBySectionUuid(sectionId);
         return schedules.stream()
@@ -45,7 +46,7 @@ public class ScheduleServiceImpl implements ScheduleService {
     }
 
     @Override
-    @Transactional
+
     public ScheduleResponseDto addSchedule(ScheduleRequestDto requestDto) {
         log.info("Attempting to create a new schedule entry for section {} at timeslot {}",
                 requestDto.getSectionId(), requestDto.getTimeslotId());
@@ -79,7 +80,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         Schedule existingSchedule = scheduleRepository.findActiveById(scheduleId)
                 .orElseThrow(() -> {
                     log.warn("No active schedule with id {} to update", scheduleId);
-                    return new RuntimeException("No resource found to update with id: " + scheduleId);
+                    return new ResourceNotFoundException("No resource found to update with id: " + scheduleId);
                 });
 
         // 2. Validate for conflicts (excluding the current scheduleId)
@@ -105,7 +106,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         log.info("Attempting to soft delete schedule entry {}", scheduleId);
         if (!scheduleRepository.existsActiveById(scheduleId)) {
             log.warn("Failed to delete. Schedule not found with id: {}", scheduleId);
-            throw new RuntimeException("Schedule id: " + scheduleId + " not found.");
+            throw new ResourceNotFoundException("Schedule id: " + scheduleId + " not found.");
         }
 
         scheduleRepository.softDeleteById(scheduleId);
@@ -122,15 +123,15 @@ public class ScheduleServiceImpl implements ScheduleService {
     private void validateScheduleConflicts(ScheduleRequestDto dto, UUID scheduleId) {
         if (scheduleRepository.existsTeacherConflict(dto.getTeacherId(), dto.getTimeslotId(), scheduleId)) {
             log.warn("Validation failed: Teacher {} is already booked at timeslot {}", dto.getTeacherId(), dto.getTimeslotId());
-            throw new RuntimeException("Teacher is already booked at this time.");
+            throw new AlreadyBookedException("Teacher is already booked at this time.");
         }
         if (scheduleRepository.existsRoomConflict(dto.getRoomId(), dto.getTimeslotId(), scheduleId)) {
             log.warn("Validation failed: Room {} is already booked at timeslot {}", dto.getRoomId(), dto.getTimeslotId());
-            throw new RuntimeException("Room is already booked at this time.");
+            throw new AlreadyBookedException("Room is already booked at this time.");
         }
         if (scheduleRepository.existsSectionConflict(dto.getSectionId(), dto.getTimeslotId(), scheduleId)) {
             log.warn("Validation failed: Section {} is already scheduled at timeslot {}", dto.getSectionId(), dto.getTimeslotId());
-            throw new RuntimeException("Section is already scheduled at this time.");
+            throw new AlreadyBookedException("Section is already scheduled at this time.");
         }
     }
 
@@ -138,28 +139,28 @@ public class ScheduleServiceImpl implements ScheduleService {
 
     private Section findSectionById(UUID sectionId) {
         return sectionRepository.findById(sectionId).orElseThrow(() ->
-                new RuntimeException("Section not found with id: " + sectionId));
+                new ResourceNotFoundException("Section not found with id: " + sectionId));
     }
 
     private Subject findSubjectById(UUID subjectId) {
         return subjectRepository.findActiveById(subjectId).orElseThrow(() ->
-                new RuntimeException("Subject not found with id: " + subjectId));
+                new ResourceNotFoundException("Subject not found with id: " + subjectId));
     }
 
     private TeacherDetails findTeacherById(Long teacherId) {
         // Assuming you have a findActiveById method in TeacherDetailsRepository
         return teacherDetailsRepository.findActiveById(teacherId).orElseThrow(() ->
-                new RuntimeException("Teacher not found with id: " + teacherId));
+                new ResourceNotFoundException("Teacher not found with id: " + teacherId));
     }
 
     private Room findRoomById(UUID roomId) {
         return roomRepository.findActiveById(roomId).orElseThrow(() ->
-                new RuntimeException("Room not found with id: " + roomId));
+                new ResourceNotFoundException("Room not found with id: " + roomId));
     }
 
     private Timeslot findTimeslotById(UUID timeslotId) {
         return timeslotRepository.findActiveById(timeslotId).orElseThrow(() ->
-                new RuntimeException("Timeslot not found with id: " + timeslotId));
+                new ResourceNotFoundException("Timeslot not found with id: " + timeslotId));
     }
 
 
