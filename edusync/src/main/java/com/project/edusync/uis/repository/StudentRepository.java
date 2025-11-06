@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Set;
 
-public interface StudentRepository extends JpaRepository<Student,Integer> {
+public interface StudentRepository extends JpaRepository<Student,Long> {
     boolean existsByEnrollmentNumber(String enrollmentNumber);
 
     @Query("SELECT s.enrollmentNumber FROM Student s WHERE s.enrollmentNumber IN :numbers")

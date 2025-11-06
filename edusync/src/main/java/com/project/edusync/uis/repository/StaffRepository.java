@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Set;
 
-public interface StaffRepository extends JpaRepository<Staff,Integer> {
+public interface StaffRepository extends JpaRepository<Staff,Long> {
     boolean existsByEmployeeId(String employeeId);
 
     @Query("SELECT s.employeeId FROM Staff s WHERE s.employeeId IN :employeeIds")
