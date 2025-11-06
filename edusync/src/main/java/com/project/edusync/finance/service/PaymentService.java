@@ -1,0 +1,48 @@
+package com.project.edusync.finance.service;
+
+import com.project.edusync.finance.dto.payment.PaymentResponseDTO;
+import com.project.edusync.finance.dto.payment.PaymentUpdateDTO;
+import com.project.edusync.finance.dto.payment.RecordOfflinePaymentDTO;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+/**
+ * Service interface for managing Payments.
+ */
+public interface PaymentService {
+
+    /**
+     * Records an offline payment (Cash, Check) against an invoice.
+     * This will create a new Payment record and update the Invoice's status.
+     *
+     * @param createDTO The DTO containing payment details.
+     * @return The response DTO of the newly created payment.
+     */
+    PaymentResponseDTO recordOfflinePayment(RecordOfflinePaymentDTO createDTO);
+
+    /**
+     * Retrieves a paginated list of all payment transactions.
+     *
+     * @param pageable Pagination and sorting information.
+     * @return A page of PaymentResponseDTOs.
+     */
+    Page<PaymentResponseDTO> getAllPayments(Pageable pageable);
+
+
+    /**
+     * Retrieves details for a single payment transaction.
+     *
+     * @param paymentId The ID of the payment.
+     * @return The response DTO of the found payment.
+     */
+    PaymentResponseDTO getPaymentById(Long paymentId);
+
+    /**
+     * Updates an existing payment record.
+     *
+     * @param paymentId The ID of the payment to update.
+     * @param updateDTO The DTO with new data.
+     * @return The response DTO of the updated payment.
+     */
+    PaymentResponseDTO updatePayment(Long paymentId, PaymentUpdateDTO updateDTO);
+}
