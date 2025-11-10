@@ -75,9 +75,3 @@ spring:
     hikari:
       connection-timeout: 30000
 
-  # --- Logging (for Dev) ---
-  logging:
-    level:
-      root: INFO
-      com.project.edusync: DEBUG
-      org.hibernate.SQL: DEBUG

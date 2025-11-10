@@ -30,6 +30,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -63,15 +65,20 @@ public class AuthServiceImpl implements AuthService {
             // 2. InternalAuthenticationServiceException (our "user not found" exception)
 
             log.warn("Invalid login attempt for user: {}", loginRequest.username());
-            // 2. RE-THROW as our custom 401 exception
+            // 2. RE-THROWING as custom exception 401
             throw new InvalidCredentialsException("Invalid username or password");
         }
-        // 3. Taking out user from authentication object
+        // 3. Taking out user from the authentication object
         User user = (User) authentication.getPrincipal();
 
         // 4. Generate tokens, now passing IP
+
+        log.info("Generating access token for user");
         String accessToken = authUtil.generateAccessToken(user.getUsername(), user.getRoles());
+        log.info("Generating refresh token");
         String refreshToken = refreshTokenService.createRefreshToken(user, ipAddress).getToken();
+
+        user.setLastLoginTimestamp(LocalDateTime.now());
 
         // 5. Prepare user DTO
         UserDetailsDto userDetailsDto = new UserDetailsDto(
@@ -80,7 +87,7 @@ public class AuthServiceImpl implements AuthService {
                 user.getEmail(),
                 user.getRoles().stream().map(Role::getName).collect(Collectors.toSet())
         );
-
+        log.info("User logged in successfully");
         return new LoginResponse(accessToken, refreshToken, userDetailsDto);
     }
 
