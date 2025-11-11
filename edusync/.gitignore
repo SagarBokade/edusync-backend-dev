@@ -11,6 +11,8 @@ target/
 
 /node_modules
 
+# Log folder
+/logs
 
 # Other common Java/Maven ignores
 target/
