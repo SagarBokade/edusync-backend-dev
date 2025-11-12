@@ -6,6 +6,7 @@ public enum Department {
     IT,
     FACILITIES,
     HUMAN_RESOURCE,
-    ADMINISTRATIVE, ACADEMICS,
-
+    ADMINISTRATION,
+    ACADEMICS,
+    LIBRARY
 }

@@ -1,6 +1,8 @@
 package com.project.edusync.enrollment.service.impl;
 
-import com.opencsv.exceptions.CsvException;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvException; // Correct exception
+import com.opencsv.exceptions.CsvValidationException;
 import com.project.edusync.adm.model.entity.Section;
 import com.project.edusync.adm.repository.SectionRepository;
 import com.project.edusync.enrollment.model.dto.BulkImportReportDTO;
@@ -10,17 +12,11 @@ import com.project.edusync.enrollment.util.RegisterUserByRole;
 import com.project.edusync.iam.model.entity.Role;
 import com.project.edusync.iam.repository.RoleRepository;
 import com.project.edusync.iam.repository.UserRepository;
-import com.project.edusync.uis.model.entity.Staff;
-import com.project.edusync.uis.model.entity.Student;
-import com.project.edusync.uis.model.entity.UserProfile;
-import com.project.edusync.uis.model.enums.Department;
-import com.project.edusync.uis.model.enums.Gender;
-import com.project.edusync.uis.model.enums.StaffType;
+import com.project.edusync.uis.model.entity.details.PrincipalDetails; // For Enums
+import com.project.edusync.uis.model.entity.details.TeacherDetails; // For Enums
+import com.project.edusync.uis.model.enums.*;
 import com.project.edusync.uis.repository.StaffRepository;
 import com.project.edusync.uis.repository.StudentRepository;
-import com.project.edusync.uis.repository.UserProfileRepository;
-import com.opencsv.CSVReader;
-import com.opencsv.exceptions.CsvValidationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +29,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.time.LocalDate;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -44,10 +40,11 @@ import java.util.stream.Collectors;
  * **optimized** (pre-caches static data like Roles and Sections).
  *
  * It orchestrates the import by:
- * 1. Pre-fetching and caching static data (Roles, Sections) for performance.
- * 2. Looping through the CSV file one row at a time.
- * 3. Calling a separate, transactional method for each row.
- * 4. Wrapping each row's processing in a try-catch block to ensure that
+ * 1. Validating the CSV header structure based on userType.
+ * 2. Pre-fetching and caching static data (Roles, Sections) for performance.
+ * 3. Looping through the CSV file one row at a time.
+ * 4. Calling a separate, transactional method for each row.
+ * 5. Wrapping each row's processing in a try-catch block to ensure that
  * one bad row does not stop the entire import.
  */
 @Service
@@ -60,24 +57,47 @@ public class BulkImportServiceImpl implements BulkImportService {
     private static final String USER_TYPE_STAFF = "staff";
     private static final String ROLE_STUDENT = "ROLE_STUDENT";
 
+    // --- CSV Header Definitions (NEW) ---
+    // (This enforces strict column order for the import)
+    private static final List<String> STUDENT_HEADER = Arrays.asList(
+            "firstName", "lastName", "middleName", "email", "dateOfBirth",
+            "rollNo", "gender", "enrollmentNumber", "enrollmentDate",
+            "className", "sectionName"
+    );
+
+    // Common staff fields + all *possible* specific fields
+    // This provides a single, verifiable header for the "staff.csv"
+    private static final List<String> STAFF_HEADER = Arrays.asList(
+            // Common Staff (0-10)
+            "firstName", "lastName", "middleName", "email", "dateOfBirth",
+            "gender", "employeeId", "joiningDate", "jobTitle", "department", "staffType",
+            // Teacher (11-15)
+            "certifications", "specializations", "yearsOfExperience", "educationLevel", "stateLicenseNumber",
+            // Principal (16-17)
+            "administrativeCertifications", "schoolLevelManaged",
+            // Librarian (18-19)
+            "librarySystemPermissions", "mlisDegree",
+            // Security (20-21)
+            "assignedGate", "shiftTiming"
+    );
+
+
     @Value("${edusync.bulk-import.default-password:Welcome@123}")
     private String DEFAULT_PASSWORD;
 
     // --- Repositories & Services (all final) ---
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
-    private final UserProfileRepository userProfileRepository;
     private final StudentRepository studentRepository;
     private final StaffRepository staffRepository;
     private final SectionRepository sectionRepository;
-    private final PasswordEncoder passwordEncoder;
     private final CsvValidationHelper validationHelper;
     private final RegisterUserByRole registerUserByRole; // Helper for saving
 
     /**
      * Orchestrates the import process.
      * This method is **NOT** transactional itself.
-     * It builds the performance caches, then loops through the CSV,
+     * It validates the header, builds the performance caches, then loops,
      * delegating the *actual* transactional work to other methods.
      *
      * @param file The multipart CSV file uploaded by the user.
@@ -89,16 +109,10 @@ public class BulkImportServiceImpl implements BulkImportService {
     public BulkImportReportDTO importUsers(MultipartFile file, String userType) throws IOException {
 
         // --- 1. PRE-FETCH CACHES (The Optimization) ---
-        // We fetch static data (that won't change mid-import) *once*
-        // to avoid N+1 queries inside the loop.
         log.info("Building caches for roles and sections...");
-
-        // Cache all Roles by their name (e.g., "ROLE_STUDENT")
         final Map<String, Role> roleCache = roleRepository.findAll().stream()
                 .collect(Collectors.toMap(Role::getName, role -> role));
 
-        // Cache all Sections by a composite key (e.g., "Class 10:A")
-        // We use findAllWithClass() for an efficient "JOIN FETCH"
         final Map<String, Section> sectionCache = sectionRepository.findAllWithClass().stream()
                 .collect(Collectors.toMap(
                         s -> s.getAcademicClass().getName() + ":" + s.getSectionName(),
@@ -114,10 +128,32 @@ public class BulkImportServiceImpl implements BulkImportService {
         try (Reader reader = new InputStreamReader(file.getInputStream());
              CSVReader csvReader = new CSVReader(reader)) {
 
-            String[] header = csvReader.readNext(); // Read and skip header
+            // --- HEADER VALIDATION (NEW) ---
+            String[] header = csvReader.readNext(); // Read the header row
             if (header == null) {
-                throw new IllegalArgumentException("File is empty or header is missing.");
+                throw new CsvValidationException("File is empty or header is missing.");
             }
+
+            final List<String> expectedHeader;
+            if (USER_TYPE_STUDENTS.equalsIgnoreCase(userType)) {
+                expectedHeader = STUDENT_HEADER;
+            } else if (USER_TYPE_STAFF.equalsIgnoreCase(userType)) {
+                expectedHeader = STAFF_HEADER;
+            } else {
+                throw new IllegalArgumentException("Invalid userType: " + userType);
+            }
+
+            // Perform strict header validation
+            List<String> actualHeader = Arrays.asList(header);
+            if (!actualHeader.equals(expectedHeader)) {
+                log.warn("CSV Header Validation FAILED. Expected: {}, Found: {}", expectedHeader, actualHeader);
+                throw new CsvValidationException(
+                        String.format("Invalid CSV header. Expected: %s, Found: %s", expectedHeader, actualHeader)
+                );
+            }
+            log.info("CSV Header validation passed.");
+            // --- End Header Validation ---
+
 
             String[] row;
             // This is the heart of the "Resilient" model.
@@ -126,16 +162,13 @@ public class BulkImportServiceImpl implements BulkImportService {
                 rowNumber++;
                 try {
                     // This is the "Orchestrator" try-catch block.
-                    // It will catch any exception bubbled up from
-                    // processStudentRow, processStaffRow, or registerUserByRole.
                     if (USER_TYPE_STUDENTS.equalsIgnoreCase(userType)) {
                         processStudentRow(row, roleCache, sectionCache);
                         successCount++;
                     } else if (USER_TYPE_STAFF.equalsIgnoreCase(userType)) {
-                        processStaffRow(row, roleCache);
+                        // (REFACTORED) Delegate to the new router method
+                        routeStaffRowProcessing(row, roleCache);
                         successCount++;
-                    } else {
-                        throw new IllegalArgumentException("Invalid userType: " + userType);
                     }
                 } catch (Exception e) {
                     // If one row fails, we log it, add it to the report,
@@ -164,14 +197,7 @@ public class BulkImportServiceImpl implements BulkImportService {
 
     /**
      * Processes and validates a single student row.
-     * This method is marked @Transactional, so all DB checks and
-     * the final save (inside the helper) are part of *one* transaction.
-     * If this fails, the transaction is rolled back for this row *only*.
-     *
-     * @param row The raw String[] from the CSV.
-     * @param roleCache The pre-fetched Role map.
-     * @param sectionCache The pre-fetched Section map.
-     * @throws Exception if any validation or database constraint fails.
+     * This method is marked @Transactional.
      */
     @Transactional(rollbackFor = Exception.class)
     public void processStudentRow(String[] row, Map<String, Role> roleCache, Map<String, Section> sectionCache) throws Exception {
@@ -181,7 +207,7 @@ public class BulkImportServiceImpl implements BulkImportService {
         String middleName = row[2]; // Optional field
         String email = validationHelper.validateEmail(row[3]);
         LocalDate dob = validationHelper.parseDate(row[4], "dateOfBirth");
-        Integer rollNo = Integer.parseInt(row[5]);
+        Integer rollNo = validationHelper.parseInt(row[5], "rollNo");
         Gender gender = validationHelper.parseEnum(Gender.class, row[6], "gender");
         String enrollmentNumber = validationHelper.validateString(row[7], "enrollmentNumber");
         LocalDate enrollmentDate = validationHelper.parseDate(row[8], "enrollmentDate");
@@ -189,9 +215,6 @@ public class BulkImportServiceImpl implements BulkImportService {
         String sectionName = validationHelper.validateString(row[10], "sectionName");
 
         // 2. --- Validate Business Logic & Foreign Keys ---
-
-        // (These two DB calls MUST stay in the transactional loop
-        // to prevent race conditions and ensure row-level integrity)
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("User with email '" + email + "' already exists.");
         }
@@ -199,20 +222,18 @@ public class BulkImportServiceImpl implements BulkImportService {
             throw new IllegalArgumentException("Student with enrollment number '" + enrollmentNumber + "' already exists.");
         }
 
-        // (These two calls are now fast, in-memory lookups from the cache)
         Section section = sectionCache.get(className + ":" + sectionName);
         if (section == null) {
             throw new IllegalArgumentException("Section not found for class '" + className + "' and section '" + sectionName + "'.");
         }
 
         Role studentRole = roleCache.get(ROLE_STUDENT);
-        if(studentRole == null) {
+        if (studentRole == null) {
             throw new RuntimeException("CRITICAL: " + ROLE_STUDENT + " not found in database.");
         }
 
         // 3. --- Delegate creation to the helper ---
-        // The helper class will now perform the save operations,
-        // all within the transaction started by this method.
+        // (This call remains the same, assuming it's already correct)
         registerUserByRole.RegisterStudent(
                 email, enrollmentNumber, DEFAULT_PASSWORD, studentRole,
                 firstName, lastName, middleName, dob, gender,
@@ -222,16 +243,49 @@ public class BulkImportServiceImpl implements BulkImportService {
 
 
     /**
-     * Processes and validates a single staff row.
-     * This method is marked @Transactional.
+     * (NEW) Transactional router for staff processing.
+     * This method is the single transactional entry point for a staff row.
+     * It parses *only* the staffType to determine which specific
+     * processing method to call.
      *
      * @param row The raw String[] from the CSV.
      * @param roleCache The pre-fetched Role map.
      * @throws Exception if any validation or database constraint fails.
      */
     @Transactional(rollbackFor = Exception.class)
-    public void processStaffRow(String[] row, Map<String, Role> roleCache) throws Exception {
-        // 1. --- Parse & Validate Data (per staff.csv spec) ---
+    public void routeStaffRowProcessing(String[] row, Map<String, Role> roleCache) throws Exception {
+        // Parse the "dispatch" column: staffType
+        // As per our STAFF_HEADER, this is at index 10.
+        StaffType staffType = validationHelper.parseEnum(StaffType.class, row[10], "staffType");
+
+        // Route to the specific parser.
+        // These private methods will run within this method's transaction.
+        switch (staffType) {
+            case TEACHER:
+                processTeacherRow(row, roleCache);
+                break;
+            case PRINCIPAL:
+                processPrincipalRow(row, roleCache);
+                break;
+            case LIBRARIAN:
+                processLibrarianRow(row, roleCache);
+                break;
+            // Add other staff types as needed
+            // case SECURITY_GUARD:
+            //    processSecurityGuardRow(row, roleCache);
+            //    break;
+            default:
+                throw new IllegalArgumentException("Unsupported staff type '" + staffType + "' for bulk import.");
+        }
+    }
+
+    /**
+     * (NEW) Private helper to process and save a single Teacher row.
+     * This method is NOT transactional; it runs inside the transaction
+     * of `routeStaffRowProcessing`.
+     */
+    private void processTeacherRow(String[] row, Map<String, Role> roleCache) throws Exception {
+        // 1. --- Parse Common Staff Fields (Indices 0-9) ---
         String firstName = validationHelper.validateString(row[0], "firstName");
         String lastName = validationHelper.validateString(row[1], "lastName");
         String middleName = row[2]; // Optional
@@ -242,11 +296,17 @@ public class BulkImportServiceImpl implements BulkImportService {
         LocalDate joiningDate = validationHelper.parseDate(row[7], "joiningDate");
         String jobTitle = validationHelper.validateString(row[8], "jobTitle");
         Department department = validationHelper.parseEnum(Department.class, row[9], "department");
-        StaffType staffType = validationHelper.parseEnum(StaffType.class, row[10], "staffType");
 
-        // 2. --- Validate Business Logic & Foreign Keys ---
+        // 2. --- Parse Teacher-Specific Fields (Indices 11-15) ---
+        String certifications = row[11]; // Assuming JSON string or CSV
+        String specializations = row[12]; // Assuming JSON string or CSV
+        Integer yearsOfExperience = validationHelper.parseInt(row[13], "yearsOfExperience");
+        EducationLevel educationLevel = validationHelper.parseEnum(
+                EducationLevel.class, row[14], "educationLevel"
+        );
+        String stateLicenseNumber = row[15];
 
-        // (DB calls that must remain in the transaction)
+        // 3. --- Validate Business Logic ---
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("User with email '" + email + "' already exists.");
         }
@@ -254,21 +314,137 @@ public class BulkImportServiceImpl implements BulkImportService {
             throw new IllegalArgumentException("Staff with employee ID '" + employeeId + "' already exists.");
         }
 
-        // (Fast, in-memory lookup from the cache)
-        String roleName = "ROLE_" + staffType.name();
-        Role staffRole = roleCache.get(roleName);
-        if(staffRole == null) {
-            throw new RuntimeException("CRITICAL: Role '" + roleName + "' not found in database.");
+        Role staffRole = roleCache.get("ROLE_TEACHER");
+        if (staffRole == null) {
+            throw new RuntimeException("CRITICAL: Role 'ROLE_TEACHER' not found in database.");
         }
 
-        // 3. --- Delegate creation to the helper ---
-        // The helper will parse the *rest* of the row (row[11], row[12], etc.)
-        // and save all entities within this transaction.
-        registerUserByRole.RegisterStaff(
-                email, employeeId, DEFAULT_PASSWORD, staffRole,
+        // 4. --- Delegate creation to the (refactored) helper ---
+        // **ASSUMPTION**: You will create this new method in RegisterUserByRole
+        /*
+        registerUserByRole.registerTeacher(
+                // Common User/Profile data
+                email, DEFAULT_PASSWORD, staffRole,
                 firstName, lastName, middleName, dob, gender,
-                joiningDate, jobTitle, department, staffType,
-                row
+                // Common Staff data
+                employeeId, joiningDate, jobTitle, department,
+                // Teacher-specific data
+                certifications, specializations, yearsOfExperience, educationLevel, stateLicenseNumber
         );
+        */
+        log.warn("processTeacherRow called. Developer must implement call to registerUserByRole.registerTeacher(...)");
+        // For now, we call the old method to avoid breaking the compile,
+        // but this should be replaced by the call above.
+        registerUserByRole.RegisterStaff(email, employeeId, DEFAULT_PASSWORD, staffRole,
+                firstName, lastName, middleName, dob, gender, joiningDate, jobTitle,
+                department, StaffType.TEACHER, row);
+    }
+
+    /**
+     * (NEW) Private helper to process and save a single Principal row.
+     */
+    private void processPrincipalRow(String[] row, Map<String, Role> roleCache) throws Exception {
+        // 1. --- Parse Common Staff Fields (Indices 0-9) ---
+        String firstName = validationHelper.validateString(row[0], "firstName");
+        String lastName = validationHelper.validateString(row[1], "lastName");
+        String middleName = row[2]; // Optional
+        String email = validationHelper.validateEmail(row[3]);
+        LocalDate dob = validationHelper.parseDate(row[4], "dateOfBirth");
+        Gender gender = validationHelper.parseEnum(Gender.class, row[5], "gender");
+        String employeeId = validationHelper.validateString(row[6], "employeeId");
+        LocalDate joiningDate = validationHelper.parseDate(row[7], "joiningDate");
+        String jobTitle = validationHelper.validateString(row[8], "jobTitle");
+        Department department = validationHelper.parseEnum(Department.class, row[9], "department");
+
+        // 2. --- Parse Principal-Specific Fields (Indices 16-17) ---
+        String adminCertifications = row[16]; // Assuming JSON string or CSV
+        SchoolLevel schoolLevel = validationHelper.parseEnum(
+                SchoolLevel.class, row[17], "schoolLevelManaged"
+        );
+
+        // 3. --- Validate Business Logic ---
+        if (userRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("User with email '" + email + "' already exists.");
+        }
+        if (staffRepository.existsByEmployeeId(employeeId)) {
+            throw new IllegalArgumentException("Staff with employee ID '" + employeeId + "' already exists.");
+        }
+
+        Role staffRole = roleCache.get("ROLE_PRINCIPAL");
+        if (staffRole == null) {
+            throw new RuntimeException("CRITICAL: Role 'ROLE_PRINCIPAL' not found in database.");
+        }
+
+        // 4. --- Delegate creation to the (refactored) helper ---
+        // **ASSUMPTION**: You will create this new method in RegisterUserByRole
+        /*
+        registerUserByRole.registerPrincipal(
+                // Common User/Profile data
+                email, DEFAULT_PASSWORD, staffRole,
+                firstName, lastName, middleName, dob, gender,
+                // Common Staff data
+                employeeId, joiningDate, jobTitle, department,
+                // Principal-specific data
+                adminCertifications, schoolLevel
+        );
+        */
+        log.warn("processPrincipalRow called. Developer must implement call to registerUserByRole.registerPrincipal(...)");
+        // For now, we call the old method to avoid breaking the compile
+        registerUserByRole.RegisterStaff(email, employeeId, DEFAULT_PASSWORD, staffRole,
+                firstName, lastName, middleName, dob, gender, joiningDate, jobTitle,
+                department, StaffType.PRINCIPAL, row);
+    }
+
+    /**
+     * (NEW) Private helper to process and save a single Librarian row.
+     */
+    private void processLibrarianRow(String[] row, Map<String, Role> roleCache) throws Exception {
+        // 1. --- Parse Common Staff Fields (Indices 0-9) ---
+        String firstName = validationHelper.validateString(row[0], "firstName");
+        String lastName = validationHelper.validateString(row[1], "lastName");
+        String middleName = row[2]; // Optional
+        String email = validationHelper.validateEmail(row[3]);
+        LocalDate dob = validationHelper.parseDate(row[4], "dateOfBirth");
+        Gender gender = validationHelper.parseEnum(Gender.class, row[5], "gender");
+        String employeeId = validationHelper.validateString(row[6], "employeeId");
+        LocalDate joiningDate = validationHelper.parseDate(row[7], "joiningDate");
+        String jobTitle = validationHelper.validateString(row[8], "jobTitle");
+        Department department = validationHelper.parseEnum(Department.class, row[9], "department");
+
+        // 2. --- Parse Librarian-Specific Fields (Indices 18-19) ---
+        String libraryPermissions = row[18]; // Assuming JSON string or CSV
+        Boolean hasMlisDegree = validationHelper.parseBoolean(row[19], "mlisDegree");
+
+        // 3. --- Validate Business Logic ---
+        if (userRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("User with email '" + email + "' already exists.");
+        }
+        if (staffRepository.existsByEmployeeId(employeeId)) {
+            throw new IllegalArgumentException("Staff with employee ID '" + employeeId + "' already exists.");
+        }
+
+        Role staffRole = roleCache.get("ROLE_LIBRARIAN");
+        if (staffRole == null) {
+            throw new RuntimeException("CRITICAL: Role 'ROLE_LIBRARIAN' not found in database.");
+        }
+
+        // 4. --- Delegate creation to the (refactored) helper ---
+        // **ASSUMPTION**: You will create this new method in RegisterUserByRole
+        /*
+        registerUserByRole.registerLibrarian(
+                // Common User/Profile data
+                email, DEFAULT_PASSWORD, staffRole,
+                firstName, lastName, middleName, dob, gender,
+                // Common Staff data
+                employeeId, joiningDate, jobTitle, department,
+                // Librarian-specific data
+                libraryPermissions, hasMlisDegree
+        );
+        */
+        log.warn("processLibrarianRow called. Developer must implement call to registerUserByRole.registerLibrarian(...)");
+        // For now, we call the old method to avoid breaking the compile
+        registerUserByRole.RegisterStaff(email, employeeId, DEFAULT_PASSWORD, staffRole,
+                firstName, lastName, middleName, dob, gender, joiningDate, jobTitle,
+                department, StaffType.LIBRARIAN, row);
     }
 }

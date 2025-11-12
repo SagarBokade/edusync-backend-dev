@@ -1,4 +1,3 @@
-// File: com/project/edusync/iam/model/entity/PasswordResetToken.java
 package com.project.edusync.iam.model.entity;
 
 import jakarta.persistence.*;
@@ -12,7 +11,7 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "iam_password_reset_tokens")
+@Table(name = "password_reset_tokens")
 @Data
 @Builder
 @NoArgsConstructor
