@@ -15,4 +15,6 @@ public interface ScheduleService {
     ScheduleResponseDto updateSchedule(UUID scheduleId, ScheduleRequestDto scheduleRequestDto);
 
     void deleteSchedule(UUID scheduleId);
+
+    void saveAsDraft(UUID sectionId, String statusType);
 }

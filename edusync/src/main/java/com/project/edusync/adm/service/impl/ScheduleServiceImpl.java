@@ -1,6 +1,7 @@
 package com.project.edusync.adm.service.impl;
 
 import com.project.edusync.adm.exception.AlreadyBookedException;
+import com.project.edusync.adm.exception.InvalidRequestException;
 import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.ScheduleRequestDto;
 import com.project.edusync.adm.model.dto.response.ScheduleResponseDto;
@@ -113,6 +114,30 @@ public class ScheduleServiceImpl implements ScheduleService {
         scheduleRepository.softDeleteById(scheduleId);
         log.info("Schedule entry {} marked as inactive successfully", scheduleId);
     }
+
+    @Override
+    @Transactional
+    public void saveAsDraft(UUID sectionId, String statusType) {
+        log.info("Attemting to save all the schedules with section id {} as draft", sectionId);
+        if(statusType != "draft" && statusType != "publish"){
+            log.warn("Status type {} is not supported", statusType);
+            throw new InvalidRequestException("Status type: " + statusType + " is not supported");
+        }
+        List<Schedule>  schedules = scheduleRepository.findAllActiveBySectionUuid(sectionId);
+        for (Schedule schedule : schedules) {
+            if(statusType == "draft") {
+                schedule.setStatus(ScheduleStatus.DRAFT);
+            }
+
+            else{
+                schedule.setStatus(ScheduleStatus.PUBLISHED);
+            }
+        }
+        scheduleRepository.saveAll(schedules);
+        log.info("Schedule entry with sectionId {} saved successfully as draft", sectionId);
+
+    }
+
 
     // --- Private Helper Methods ---
 

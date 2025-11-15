@@ -70,4 +70,10 @@ public class ScheduleController {
         scheduleService.deleteSchedule(scheduleId);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/schedules/{sectionId}/status/{statusType}")
+    public ResponseEntity<String> draftSchedule(@PathVariable UUID sectionId, @PathVariable String statusType) {
+        scheduleService.saveAsDraft(sectionId,statusType);
+        return new ResponseEntity<>("Saved as draft",HttpStatus.OK);
+    }
 }
