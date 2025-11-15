@@ -1,5 +1,6 @@
 package com.project.edusync.adm.model.entity;
 
+import com.project.edusync.adm.model.enums.ScheduleStatus;
 import com.project.edusync.common.model.AuditableEntity;
 import com.project.edusync.uis.model.entity.details.TeacherDetails;
 import jakarta.persistence.*;
@@ -27,7 +28,7 @@ public class Schedule extends AuditableEntity {
     // The @Id (Long id) and 'uuid' are inherited from AuditableEntity.
 
     @Column(name = "status", length = 50)
-    private String status;
+    private ScheduleStatus status;
 
     @Column(name = "is_active")
     private Boolean isActive = true;

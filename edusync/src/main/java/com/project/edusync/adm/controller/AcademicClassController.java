@@ -43,10 +43,7 @@ public class AcademicClassController {
     public ResponseEntity<AcademicClassResponseDto> createAcademicClass(
             @Valid @RequestBody AcademicClassRequestDto requestDto) {
 
-        // Stubbed response - replace with your service call
-        // AcademicClassResponseDto createdClass = academicClassService.createClass(requestDto);
         AcademicClassResponseDto createdClass = academicClassService.addClass(requestDto);
-
         return new ResponseEntity<>(createdClass, HttpStatus.CREATED);
     }
 

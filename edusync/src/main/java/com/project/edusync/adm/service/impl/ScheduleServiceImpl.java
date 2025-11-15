@@ -5,6 +5,7 @@ import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.ScheduleRequestDto;
 import com.project.edusync.adm.model.dto.response.ScheduleResponseDto;
 import com.project.edusync.adm.model.entity.*;
+import com.project.edusync.adm.model.enums.ScheduleStatus;
 import com.project.edusync.adm.repository.*;
 import com.project.edusync.adm.service.ScheduleService;
 //import com.project.edusync.exception.DataConflictException;
@@ -62,7 +63,7 @@ public class ScheduleServiceImpl implements ScheduleService {
         newSchedule.setRoom(findRoomById(requestDto.getRoomId()));
         newSchedule.setTimeslot(findTimeslotById(requestDto.getTimeslotId()));
         newSchedule.setIsActive(true);
-        newSchedule.setStatus("SCHEDULED"); // Example status
+        newSchedule.setStatus(ScheduleStatus.NONE); // Example status
 
         // 3. Save and return
         Schedule savedSchedule = scheduleRepository.save(newSchedule);
