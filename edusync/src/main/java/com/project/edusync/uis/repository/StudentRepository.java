@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
 import java.util.Set;
 
 public interface StudentRepository extends JpaRepository<Student,Long> {
@@ -12,4 +13,6 @@ public interface StudentRepository extends JpaRepository<Student,Long> {
 
     @Query("SELECT s.enrollmentNumber FROM Student s WHERE s.enrollmentNumber IN :numbers")
     Set<String> findNumbersThatExist(@Param("numbers") Set<String> numbers);
+
+    Optional<Student> findByUserProfile_User_Username(String username);
 }

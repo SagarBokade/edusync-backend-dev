@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
 import java.util.Set;
 
 public interface StaffRepository extends JpaRepository<Staff,Long> {
@@ -12,4 +13,6 @@ public interface StaffRepository extends JpaRepository<Staff,Long> {
 
     @Query("SELECT s.employeeId FROM Staff s WHERE s.employeeId IN :employeeIds")
     Set<String> findEmployeeIdsThatExist(@Param("employeeIds") Set<String> employeeIds);
+
+    Optional<Staff> findByUserProfile_User_Username(String username);
 }
