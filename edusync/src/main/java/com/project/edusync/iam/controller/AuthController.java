@@ -94,6 +94,7 @@ public class AuthController {
             @ApiResponse(responseCode = "401", description = "Unauthorized"),
             @ApiResponse(responseCode = "404", description = "User profile not found")
     })
+
     @GetMapping("/me")
     public ResponseEntity<MeResponse> getMyProfile(@AuthenticationPrincipal UserDetails userDetails) {
         // @AuthenticationPrincipal injects the UserDetails object created by our

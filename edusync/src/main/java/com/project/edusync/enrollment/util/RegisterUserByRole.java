@@ -61,7 +61,7 @@ public class RegisterUserByRole {
      * This is the foundational block for both Students and Staff.
      *
      * @param email The user's unique email.
-     * @param username The user's unique username (e.g., enrollment number or email).
+     * @param username The user's unique username (e.g., enrollment number or employeeId).
      * @param DEFAULT_PASSWORD The plain-text default password to be hashed.
      * @param role The pre-fetched Role entity to assign.
      * @return The newly persisted User entity.
@@ -190,7 +190,7 @@ public class RegisterUserByRole {
     ) { // <-- No 'throws Exception' needed, RuntimeExceptions will bubble up
 
         log.info("Attempting to create User for staff: {}", email);
-        User user = RegisterUser(email, email, DEFAULT_PASSWORD, staffRole); // Staff username is their email
+        User user = RegisterUser(email, employeeId, DEFAULT_PASSWORD, staffRole); // Staff employeeId is their email
 
         log.info("Attempting to create User Profile for staff: {}", email);
         UserProfile userProfile = RegisterUserProfile(firstName, lastName, middleName, dob, gender, user);
@@ -256,7 +256,20 @@ public class RegisterUserByRole {
         log.info("Registering LibrarianDetails for staff ID: {}", staff.getId());
         LibrarianDetails details = new LibrarianDetails();
         details.setStaff(staff);
-        details.setMlisDegree(Boolean.parseBoolean(validationHelper.validateString(row[11], "mlisDegree")));
+        String mlisValue = row[19];
+
+        if (mlisValue == null || mlisValue.isBlank()) {
+            details.setMlisDegree(false); // Default to false if blank
+        } else {
+            // Only parse if not blank. Boolean.parseBoolean is safe.
+            details.setMlisDegree(Boolean.parseBoolean(mlisValue));
+        }
+        String permissionsValue = row[18];
+        if (permissionsValue != null && !permissionsValue.isBlank()) {
+            details.setLibrarySystemPermissions(List.of(permissionsValue.split(",")));
+        } else {
+            details.setLibrarySystemPermissions(Collections.emptyList()); // Set as empty list
+        }
         librarianDetailsRepository.save(details);
     }
 
