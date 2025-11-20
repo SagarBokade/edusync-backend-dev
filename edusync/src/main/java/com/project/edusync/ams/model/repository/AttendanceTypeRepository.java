@@ -17,6 +17,12 @@ public interface AttendanceTypeRepository extends JpaRepository<AttendanceType, 
     Optional<AttendanceType> findByShortCode(String shortCode);
 
     /**
+     * Finds an attendance type by its unique short code (e.g., 'P', 'A', 'UA').
+     * Case-insensitive lookup is convenient for API clients that may send 'p' or 'P'.
+     */
+    Optional<AttendanceType> findByShortCodeIgnoreCase(String shortCode);
+
+    /**
      * Finds an attendance type by its unique full name (e.g., 'Present', 'Excused Absence').
      */
     Optional<AttendanceType> findByTypeName(String typeName);

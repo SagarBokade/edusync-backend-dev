@@ -31,6 +31,7 @@ public class AttendanceTypeServiceImpl implements AttendanceTypeService {
         entity.setAbsenceMark(dto.getIsAbsenceMark());
         entity.setLateMark(dto.getIsLateMark());
         entity.setColorCode(dto.getColorCode());
+        entity.setShortCode(dto.getShortCode());
         entity.setActive(true);
         return entity;
     }

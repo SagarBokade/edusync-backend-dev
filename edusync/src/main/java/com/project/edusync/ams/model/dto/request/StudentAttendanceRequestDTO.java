@@ -1,5 +1,6 @@
 package com.project.edusync.ams.model.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Size;
@@ -22,8 +23,9 @@ public class StudentAttendanceRequestDTO {
     /**
      * JPA Foreign Key to AMS.AttendanceType.id. Cannot be null.
      */
-    @NotNull(message = "Attendance Type ID is required")
-    Long attendanceTypeId;
+    @NotBlank(message = "Attendance short code (P, A, L) is required.")
+    @Size(min = 1, max = 10, message = "Short code must be between 1 and 10 characters.")
+    String attendanceShortCode; // Use P, A, or L
 
     @NotNull(message = "Attendance date is required")
     @PastOrPresent(message = "Attendance date cannot be in the future")

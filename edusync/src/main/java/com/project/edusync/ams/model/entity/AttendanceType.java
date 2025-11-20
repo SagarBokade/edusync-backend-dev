@@ -17,24 +17,24 @@ public class AttendanceType extends AuditableEntity {
 
     // id (as type_id), uuid, and audit fields are inherited.
 
-    @Column(name = "type_name", length = 50, nullable = false, unique = true)
+    @Column(name = "type_name", length = 50, unique = true)
     private String typeName; // e.g., "Present", "Unexcused Absence"
 
-    @Column(name = "short_code", length = 10, nullable = false, unique = true)
+    @Column(name = "short_code", length = 10, unique = true)
     private String shortCode; // e.g., "P", "A", "UA", "E"
 
-    @Column(name = "is_present_mark", nullable = false)
+    @Column(name = "is_present_mark")
     private boolean isPresentMark = false;
 
-    @Column(name = "is_absence_mark", nullable = false)
+    @Column(name = "is_absence_mark")
     private boolean isAbsenceMark = false;
 
-    @Column(name = "is_late_mark", nullable = false)
+    @Column(name = "is_late_mark")
     private boolean isLateMark = false;
 
     @Column(name = "color_code", length = 7)
     private String colorCode; // Hex color for UI display
 
-    @Column(name = "is_active", nullable = false)
+    @Column(name = "is_active")
     private boolean isActive = true;
 }

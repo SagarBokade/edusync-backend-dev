@@ -21,6 +21,8 @@ public class StudentAttendanceResponseDTO {
 
     LocalDate attendanceDate;
 
+    String attendanceTypeShortCode; // e.g., P, A, L
+
     /** Logical FK to UIS.Staff.id */
     Long takenByStaffId;
 
