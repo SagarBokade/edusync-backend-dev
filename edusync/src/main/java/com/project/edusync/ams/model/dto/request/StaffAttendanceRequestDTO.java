@@ -11,12 +11,13 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
- * DTO for creating or updating a StaffDailyAttendance record (e.g., clocking in/out).
+ * Request DTO for creating or updating a StaffDailyAttendance record.
+ * Uses attendanceShortCode (e.g., "P","A","L") for consistency with Student APIs.
  */
 @Value
 public class StaffAttendanceRequestDTO {
 
-    /** Logical Foreign Key to UIS.Staff.id. */
+    /** Logical FK to UIS.Staff.id. */
     @NotNull(message = "Staff ID is required")
     Long staffId;
 
@@ -24,20 +25,21 @@ public class StaffAttendanceRequestDTO {
     @PastOrPresent(message = "Attendance date cannot be in the future")
     LocalDate attendanceDate;
 
-    /** JPA Foreign Key to AMS.AttendanceType.id. */
-    @NotNull(message = "Attendance Type ID is required")
-    Long attendanceTypeId;
+    /** Short code representing attendance type (P/A/L/etc.) - preferred over numeric type id */
+    @NotNull(message = "Attendance short code is required")
+    String attendanceShortCode;
 
     LocalTime timeIn;
     LocalTime timeOut;
 
-    /** Total hours worked, used for manual entry or system calculated override. */
+    /** Total hours worked (manual override). */
     @DecimalMin(value = "0.0", message = "Total hours must be non-negative")
     Double totalHours;
 
+    /** Strong-typed source */
     @NotNull(message = "Attendance source must be specified.")
     AttendanceSource source; // e.g., MANUAL, BIOMETRIC, SYSTEM
 
-    @Size(max = 255, message = "Notes cannot exceed 255 characters")
+    @Size(max = 500, message = "Notes cannot exceed 500 characters")
     String notes;
 }

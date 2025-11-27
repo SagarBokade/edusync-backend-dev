@@ -1,6 +1,7 @@
 // File: com/project/edusync/common/exception/GlobalExceptionHandler.java
 package com.project.edusync.common.exception;
 
+import com.project.edusync.ams.model.exception.AttendanceRecordNotFoundException;
 import com.project.edusync.common.model.dto.ErrorResponse;
 import com.project.edusync.common.model.dto.ValidationErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @RestControllerAdvice
@@ -108,4 +110,17 @@ public class GlobalExceptionHandler {
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    @ExceptionHandler(AttendanceRecordNotFoundException.class)
+    public ResponseEntity<Object> handleAttendanceNotFound(AttendanceRecordNotFoundException ex,
+                                                           HttpServletRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("statusCode", HttpStatus.NOT_FOUND.value());
+        body.put("message", ex.getMessage() != null ? ex.getMessage() : "Attendance record not found");
+        body.put("path", request.getRequestURI());
+        body.put("timestamp", Instant.now().toString());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+
 }
