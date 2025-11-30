@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.Collections;
@@ -129,6 +130,7 @@ public class RegisterUserByRole {
      * @param enrollmentDate Date of enrollment.
      * @param section The pre-fetched Section entity.
      */
+    @Transactional
     public void RegisterStudent(
             String email,
             String enrollmentNumber,
@@ -150,6 +152,7 @@ public class RegisterUserByRole {
         UserProfile userProfile = RegisterUserProfile(firstName, lastName, middleName, dob, gender, user);
 
         // Create the final Student entity
+        log.info("Attempting to create Student: {} with username : {}", firstName, enrollmentNumber);
         Student student = new Student();
         student.setEnrollmentNumber(enrollmentNumber);
         student.setEnrollmentDate(enrollmentDate);
@@ -157,9 +160,6 @@ public class RegisterUserByRole {
         student.setActive(true);
         student.setUserProfile(userProfile);
         student.setSection(section);
-
-        log.info("Attempting to create Student: {} with username : {}", firstName, enrollmentNumber);
-        studentRepository.save(student);
 
         log.info("Successfully created student: {}", email);
     }

@@ -53,7 +53,7 @@ public class RequestLoggingAspect {
         log.info("############       Incoming Request      ################");
         log.info("#########################################################");
         log.info("\tClientIp: {}", clientIp);
-        log.info("\tClass: {}", className);
+        log.info("\tController Class: {}", className);
         log.info("\tMethod: {}", methodName);
     }
 
