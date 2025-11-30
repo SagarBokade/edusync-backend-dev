@@ -1,0 +1,52 @@
+package com.project.edusync.ams.model.repository;
+
+import com.project.edusync.ams.model.entity.StudentDailyAttendance;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface StudentDailyAttendanceRepository extends JpaRepository<StudentDailyAttendance, Long> {
+
+    /**
+     * Finds the record for a specific student on a specific date, enforcing the unique constraint.
+     * @param studentId The logical ID of the student (UIS FK).
+     * @param attendanceDate The date.
+     * @return The attendance record, if it exists.
+     */
+    Optional<StudentDailyAttendance> findByStudentIdAndAttendanceDate(
+            Long studentId,
+            LocalDate attendanceDate);
+
+    /**
+     * Retrieves all attendance records for a student, paginated and sorted by date descending.
+     * Crucial for a student/parent attendance history view.
+     */
+    Page<StudentDailyAttendance> findByStudentIdOrderByAttendanceDateDesc(
+            Long studentId,
+            Pageable pageable);
+
+    /**
+     * Retrieves all attendance records taken by a staff member within a date range.
+     * Useful for auditing and reporting on staff activity.
+     */
+    List<StudentDailyAttendance> findByTakenByStaffIdAndAttendanceDateBetween(
+            Long takenByStaffId,
+            LocalDate startDate,
+            LocalDate endDate);
+
+    /**
+     * Retrieves attendance for a group of students on a given date (e.g., a specific section/class).
+     */
+    @Query("SELECT sda FROM StudentDailyAttendance sda WHERE sda.studentId IN :studentIds AND sda.attendanceDate = :attendanceDate")
+    List<StudentDailyAttendance> findAttendanceByStudentIdsAndDate(
+            @Param("studentIds") List<Long> studentIds,
+            @Param("attendanceDate") LocalDate attendanceDate);
+}

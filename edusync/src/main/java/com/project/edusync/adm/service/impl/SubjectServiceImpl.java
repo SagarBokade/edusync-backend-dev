@@ -1,5 +1,7 @@
 package com.project.edusync.adm.service.impl;
 
+import com.project.edusync.adm.exception.DuplicateEntryException;
+import com.project.edusync.adm.exception.ResourceNotFoundException;
 import com.project.edusync.adm.model.dto.request.SubjectRequestDto;
 import com.project.edusync.adm.model.dto.response.SubjectResponseDto;
 import com.project.edusync.adm.model.entity.Subject;
@@ -22,14 +24,13 @@ public class SubjectServiceImpl implements SubjectService {
     private final SubjectRepository subjectRepository;
 
     @Override
-    @Transactional
     public SubjectResponseDto addSubject(SubjectRequestDto subjectRequestDto) {
         log.info("Attempting to create a new subject with code: {}", subjectRequestDto.getSubjectCode());
 
         // Best Practice: Validate for uniqueness
         if (subjectRepository.existsBySubjectCode(subjectRequestDto.getSubjectCode())) {
             log.warn("Subject creation failed. Code '{}' already exists.", subjectRequestDto.getSubjectCode());
-            throw new RuntimeException("Subject with code " + subjectRequestDto.getSubjectCode() + " already exists.");
+            throw new DuplicateEntryException("Subject with code " + subjectRequestDto.getSubjectCode() + " already exists.");
         }
 
         Subject newSubject = new Subject();
@@ -45,7 +46,6 @@ public class SubjectServiceImpl implements SubjectService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<SubjectResponseDto> getAllSubjects() {
         log.info("Fetching all active subjects");
         return subjectRepository.findAll().stream()
@@ -55,13 +55,12 @@ public class SubjectServiceImpl implements SubjectService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public SubjectResponseDto getSubjectById(UUID subjectId) {
         log.info("Fetching subject with id: {}", subjectId);
         Subject subject = subjectRepository.findActiveById(subjectId)
                 .orElseThrow(() -> {
                     log.warn("No active subject with id {} found", subjectId);
-                    return new RuntimeException("No resource found with id: " + subjectId);
+                    return new ResourceNotFoundException("No resource found with id: " + subjectId);
                 });
         return toSubjectResponseDto(subject);
     }
@@ -73,14 +72,14 @@ public class SubjectServiceImpl implements SubjectService {
         Subject existingSubject = subjectRepository.findActiveById(subjectId)
                 .orElseThrow(() -> {
                     log.warn("No active subject with id {} to update", subjectId);
-                    return new RuntimeException("No resource found to update with id: " + subjectId);
+                    return new ResourceNotFoundException("No resource found to update with id: " + subjectId);
                 });
 
-        // Best Practice: Check uniqueness of subject code only if it's being changed
+        // Check uniqueness of subject code only if it's being changed
         if (!existingSubject.getSubjectCode().equals(subjectRequestDto.getSubjectCode())) {
             if (subjectRepository.existsBySubjectCodeAndUuidNot(subjectRequestDto.getSubjectCode(), subjectId)) {
                 log.warn("Subject update failed. Code '{}' already exists for another subject.", subjectRequestDto.getSubjectCode());
-                throw new RuntimeException("Subject with code " + subjectRequestDto.getSubjectCode() + " already exists.");
+                throw new DuplicateEntryException("Subject with code " + subjectRequestDto.getSubjectCode() + " already exists.");
             }
         }
 
@@ -100,7 +99,7 @@ public class SubjectServiceImpl implements SubjectService {
         log.info("Attempting to soft delete subject with id: {}", subjectId);
         if (!subjectRepository.existsActiveById(subjectId)) {
             log.warn("Failed to delete. Subject not found with id: {}", subjectId);
-            throw new RuntimeException("Subject id: " + subjectId + " not found.");
+            throw new ResourceNotFoundException("Subject id: " + subjectId + " not found.");
         }
 
         subjectRepository.softDeleteById(subjectId);

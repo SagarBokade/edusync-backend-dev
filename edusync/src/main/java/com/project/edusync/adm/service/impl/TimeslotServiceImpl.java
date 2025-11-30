@@ -1,5 +1,7 @@
 package com.project.edusync.adm.service.impl;
 
+import com.project.edusync.adm.exception.ResourceNotFoundException;
+import com.project.edusync.adm.exception.TimeSlotException;
 import com.project.edusync.adm.model.dto.request.TimeslotRequestDto;
 import com.project.edusync.adm.model.dto.response.TimeslotResponseDto;
 import com.project.edusync.adm.model.entity.Timeslot;
@@ -22,7 +24,6 @@ public class TimeslotServiceImpl implements TimeslotService {
     private final TimeslotRepository timeslotRepository;
 
     @Override
-    @Transactional
     public TimeslotResponseDto addTimeslot(TimeslotRequestDto timeslotRequestDto) {
         log.info("Attempting to create a new timeslot for day {} at {}",
                 timeslotRequestDto.getDayOfWeek(), timeslotRequestDto.getStartTime());
@@ -46,7 +47,6 @@ public class TimeslotServiceImpl implements TimeslotService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<TimeslotResponseDto> getAllTimeslots(Short dayOfWeek) {
         List<Timeslot> timeslots;
         if (dayOfWeek != null) {
@@ -63,13 +63,12 @@ public class TimeslotServiceImpl implements TimeslotService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public TimeslotResponseDto getTimeslotById(UUID timeslotId) {
         log.info("Fetching timeslot with id: {}", timeslotId);
         Timeslot timeslot = timeslotRepository.findActiveById(timeslotId)
                 .orElseThrow(() -> {
                     log.warn("No active timeslot with id {} found", timeslotId);
-                    return new RuntimeException("No resource found with id: " + timeslotId);
+                    return new ResourceNotFoundException("No resource found with id: " + timeslotId);
                 });
         return toTimeslotResponseDto(timeslot);
     }
@@ -81,7 +80,7 @@ public class TimeslotServiceImpl implements TimeslotService {
         Timeslot existingTimeslot = timeslotRepository.findActiveById(timeslotId)
                 .orElseThrow(() -> {
                     log.warn("No active timeslot with id {} to update", timeslotId);
-                    return new RuntimeException("No resource found to update with id: " + timeslotId);
+                    return new ResourceNotFoundException("No resource found to update with id: " + timeslotId);
                 });
 
         // Best Practice: Validate logic, passing the existing UUID to exclude it from uniqueness check
@@ -105,7 +104,7 @@ public class TimeslotServiceImpl implements TimeslotService {
         log.info("Attempting to soft delete timeslot with id: {}", timeslotId);
         if (!timeslotRepository.existsActiveById(timeslotId)) {
             log.warn("Failed to delete. Timeslot not found with id: {}", timeslotId);
-            throw new RuntimeException("Timeslot id: " + timeslotId + " not found.");
+            throw new ResourceNotFoundException("Timeslot id: " + timeslotId + " not found.");
         }
 
         timeslotRepository.softDeleteById(timeslotId);
@@ -121,7 +120,7 @@ public class TimeslotServiceImpl implements TimeslotService {
         // 1. Check if end time is after start time
         if (!dto.getEndTime().isAfter(dto.getStartTime())) {
             log.warn("Validation failed: End time {} is not after start time {}", dto.getEndTime(), dto.getStartTime());
-            throw new RuntimeException("End time must be after start time.");
+            throw new TimeSlotException("End time must be after start time.");
         }
 
         // 2. Check for uniqueness (DayOfWeek + StartTime)
@@ -136,7 +135,7 @@ public class TimeslotServiceImpl implements TimeslotService {
 
         if (exists) {
             log.warn("Validation failed: A timeslot for day {} at {} already exists.", dto.getDayOfWeek(), dto.getStartTime());
-            throw new RuntimeException("A timeslot for this day and start time already exists.");
+            throw new TimeSlotException("A timeslot for this day and start time already exists.");
         }
     }
 

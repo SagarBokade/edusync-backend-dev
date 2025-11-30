@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 
 @Data
 @AllArgsConstructor
-@NoArgsConstructor
 public class UserProfileResponseDTO {
     // --- From UserProfile (and AuditableEntity) ---
     private Long id; // The UserProfile ID
