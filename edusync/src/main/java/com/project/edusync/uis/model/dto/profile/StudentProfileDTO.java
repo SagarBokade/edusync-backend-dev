@@ -11,7 +11,6 @@ public class StudentProfileDTO {
     private Long studentId;
     private String enrollmentNo;
     private String enrollmentStatus;
-    // ... other fields from Student.java
 
     // Nested medical profile
     private StudentMedicalRecordDTO medicalRecord;

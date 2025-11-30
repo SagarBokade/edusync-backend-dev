@@ -15,14 +15,14 @@ import java.util.Set;
 @NoArgsConstructor
 public class Guardian extends AuditableEntity {
 
-    // id, uuid, and audit fields are inherited.
-    // All name/dob columns are REMOVED.
-
     @Column(name = "phone_number", length = 20, nullable = false)
     private String phoneNumber;
 
-    // Email is also removed, as it's part of the UserProfile
-    // or the User (login) record.
+    @Column(name = "occupation", length = 100)
+    private String occupation;
+
+    @Column(name = "employer", length = 100)
+    private String employer;
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;

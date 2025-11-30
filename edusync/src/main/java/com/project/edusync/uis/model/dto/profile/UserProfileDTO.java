@@ -9,7 +9,7 @@ import java.time.LocalDate;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class BasicUserProfileDTO {
+public class UserProfileDTO {
     private Long profileId;
     private String firstName;
     private String middleName;
@@ -18,4 +18,7 @@ public class BasicUserProfileDTO {
     private LocalDate dateOfBirth;
     private String bio;
     private Gender gender;
+    // Aggregated fields from the User entity
+    private String username;
+    private String email;
 }
