@@ -32,4 +32,10 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     Set<String> findEmailsThatExist(@Param("emails") Set<String> emails);
 
     boolean existsByUsername(String enrollmentNumber);
+
+    // Custom Query to efficiently fetch all role
+    //
+    // names for a user
+    @Query("SELECT r.name FROM User u JOIN u.roles r WHERE u.id = :userId")
+    Set<String> findRoleNamesByUserId(@Param("userId") Long userId);
 }
