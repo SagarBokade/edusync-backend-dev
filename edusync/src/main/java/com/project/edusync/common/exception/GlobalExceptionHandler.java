@@ -1,6 +1,7 @@
 // File: com/project/edusync/common/exception/GlobalExceptionHandler.java
 package com.project.edusync.common.exception;
 
+import com.project.edusync.ams.model.exception.AttendanceProcessingException;
 import com.project.edusync.ams.model.exception.AttendanceRecordNotFoundException;
 import com.project.edusync.common.model.dto.ErrorResponse;
 import com.project.edusync.common.model.dto.ValidationErrorResponse;
@@ -122,5 +123,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
+    @ExceptionHandler(AttendanceProcessingException.class)
+    public ResponseEntity<Object> handleAttendanceProcessing(AttendanceProcessingException ex,
+                                                             HttpServletRequest request) {
+        HttpStatus status = HttpStatus.CONFLICT; // 409 - business rule conflict
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("statusCode", status.value());
+        body.put("message", ex.getMessage() != null ? ex.getMessage() : "Business rule violation");
+        body.put("path", request.getRequestURI());
+        body.put("timestamp", Instant.now().toString());
+
+        return ResponseEntity.status(status).body(body);
+    }
 
 }

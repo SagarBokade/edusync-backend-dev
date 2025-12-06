@@ -28,6 +28,12 @@ public interface AttendanceTypeRepository extends JpaRepository<AttendanceType, 
     Optional<AttendanceType> findByTypeName(String typeName);
 
     /**
+     * Case-insensitive contains search on typeName (e.g., "exc" -> "Excused").
+     * This is used as a fallback when searching for an 'Excused' attendance type.
+     */
+    Optional<AttendanceType> findByTypeNameContainingIgnoreCase(String namePart);
+
+    /**
      * Retrieves all attendance types that mark a student/staff as present.
      */
     List<AttendanceType> findByIsPresentMarkTrue();
@@ -63,14 +69,4 @@ public interface AttendanceTypeRepository extends JpaRepository<AttendanceType, 
      * Retrieves all active attendance types for use in UI/logic.
      */
     List<AttendanceType> findByIsActiveTrue();
-
-    // The methods below are needed for the soft-delete check in the Service layer:
-
-    /**
-     * Checks if any StudentDailyAttendance record uses this type ID.
-     * NOTE: This assumes a count method exists in the StudentDailyAttendanceRepository.
-     * We simulate the check here. In a service, this would be a check against the child table.
-     */
-    // @Query("SELECT COUNT(s) FROM StudentDailyAttendance s WHERE s.attendanceType.id = :typeId")
-    // Long countStudentUsage(@Param("typeId") Long typeId);
 }

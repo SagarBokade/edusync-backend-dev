@@ -7,46 +7,76 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
+/**
+ * Persistence entity for absence / excuse documentation.
+ *
+ * Note:
+ *  - This entity uses AuditableEntity for createdAt/createdBy/updatedAt metadata.
+ *  - documentUrl is a pointer to a file (S3/local storage/etc.). File upload is not implemented here.
+ */
 @Entity
-@Table(name = "absence_documentation")
+@Table(name = "absence_documentation",
+        indexes = {
+                @Index(name = "idx_abs_doc_attendance", columnList = "attendance_id"),
+                @Index(name = "idx_abs_doc_status", columnList = "approval_status")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
 public class AbsenceDocumentation extends AuditableEntity {
 
-    // id (as documentation_id), uuid, and audit fields are inherited.
+    // id, uuid and audit fields are inherited from AuditableEntity
 
     /**
-     * Shared Primary Key and Foreign Key to StudentDailyAttendance.
+     * Link to the original StudentDailyAttendance record this documentation refers to.
      */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "attendance_id", nullable = false)
+    private StudentDailyAttendance attendance;
 
-    @Id
-    @Column(name = "daily_attendance_id")
-    private Long id;
-
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @MapsId
-    @JoinColumn(name = "daily_attendance_id")
-    private StudentDailyAttendance dailyAttendance;
-
-    /** LOGICAL FK to uis.User.id **/
+    /**
+     * The user (parent/student) who submitted this documentation. Logical FK to UIS.User.id.
+     */
     @Column(name = "submitted_by_user_id", nullable = false)
     private Long submittedByUserId;
 
-    /** LOGICAL FK to uis.Staff.id **/
+    /**
+     * Pointer to external storage (S3, CDN, file-server).
+     * Keep long length for URL storage (1000).
+     */
+    @Column(name = "documentation_url", length = 1000)
+    private String documentationUrl;
+
+    /**
+     * Free-form text reason/explanation provided by submitter.
+     */
+    @Column(name = "reason_text", columnDefinition = "TEXT")
+    private String reasonText;
+
+    /**
+     * The current approval status in the workflow.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", length = 20, nullable = false)
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    /**
+     * Optional notes from reviewer (approver) - can include rejection reason or comments for approval.
+     */
+    @Column(name = "reviewer_notes", columnDefinition = "TEXT")
+    private String reviewerNotes;
+
+    /**
+     * Staff id who made the decision (approve/reject).
+     */
     @Column(name = "approved_by_staff_id")
     private Long approvedByStaffId;
 
-    @Column(name = "reason_text", columnDefinition = "TEXT", nullable = false)
-    private String reasonText;
-
-    @Column(name = "documentation_url", length = 255)
-    private String documentationUrl;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "approval_status", length = 10, nullable = false)
-    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
-
-    @Column(name = "reviewer_notes", columnDefinition = "TEXT")
-    private String reviewerNotes;
+    /**
+     * When the decision (approve/reject) was made.
+     */
+    @Column(name = "decision_at")
+    private LocalDateTime decisionAt;
 }

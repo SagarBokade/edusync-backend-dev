@@ -7,34 +7,61 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
+/**
+ * Repository for managing AbsenceDocumentation persistence.
+ *
+ * Notes:
+ * - Methods here are additive and non-breaking.
+ * - Consider adding a DB unique constraint on (attendance_id, submitted_by_user_id)
+ *   if you want to enforce "one submission per parent per attendance" at the DB level.
+ */
 @Repository
 public interface AbsenceDocumentationRepository extends JpaRepository<AbsenceDocumentation, Long> {
 
     /**
-     * Retrieves all absence documentation records that require review (PENDING).
-     * This powers the 'Absence Review Queue' for administrative staff.
+     * Retrieves absence documentation records by approval status.
+     * Use the pageable sort to control ordering; the service currently uses createdAt desc.
      */
-    Page<AbsenceDocumentation> findByApprovalStatusOrderByCreatedAtAsc(
-            ApprovalStatus approvalStatus,
-            Pageable pageable);
+    Page<AbsenceDocumentation> findByApprovalStatus(ApprovalStatus approvalStatus, Pageable pageable);
+
+    /**
+     * Retrieves pending docs ordered by createdAt ascending (queue style).
+     * Maintained for convenience; caller can also pass Pageable with sort.
+     */
+    Page<AbsenceDocumentation> findByApprovalStatusOrderByCreatedAtAsc(ApprovalStatus approvalStatus, Pageable pageable);
 
     /**
      * Finds documentation submitted by a specific user (e.g., a parent/guardian).
      */
-    Page<AbsenceDocumentation> findBySubmittedByUserIdOrderByCreatedAtDesc(
-            Long submittedByUserId,
-            Pageable pageable);
+    Page<AbsenceDocumentation> findBySubmittedByUserId(Long submittedByUserId, Pageable pageable);
 
     /**
      * Finds documentation approved by a specific staff member.
      */
-    Page<AbsenceDocumentation> findByApprovedByStaffIdOrderByUpdatedAtDesc(
-            Long approvedByStaffId,
-            Pageable pageable);
+    Page<AbsenceDocumentation> findByApprovedByStaffId(Long approvedByStaffId, Pageable pageable);
 
     /**
-     * Since the PK is shared, we can use the dailyAttendanceId to find the documentation.
-     * This is useful for checking if an excuse has been submitted for a specific absence.
+     * Find documentation for a specific attendance record (by attendance PK).
+     * Returns Optional to indicate presence/absence.
      */
-//    Optional<AbsenceDocumentation> findById(Long dailyAttendanceId);
+    Optional<AbsenceDocumentation> findByAttendanceId(Long attendanceId);
+
+    /**
+     * Helper that checks if a documentation exists for the given attendance id (fast boolean check).
+     */
+    boolean existsByAttendanceId(Long attendanceId);
+
+    /**
+     * Helper to check whether the same user has already submitted documentation for the same attendance.
+     * Useful for preventing duplicate submissions by the same parent.
+     */
+    boolean existsByAttendanceIdAndSubmittedByUserId(Long attendanceId, Long submittedByUserId);
+
+    /**
+     * Get the most recent documentation for an attendance (if multiple allowed).
+     * Useful if you preserve history and want the latest state.
+     */
+    Optional<AbsenceDocumentation> findFirstByAttendanceIdOrderByCreatedAtDesc(Long attendanceId);
 }
