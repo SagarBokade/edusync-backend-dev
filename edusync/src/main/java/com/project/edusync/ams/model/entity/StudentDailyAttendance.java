@@ -52,8 +52,7 @@ public class StudentDailyAttendance extends AuditableEntity {
      * Bi-directional relationship for the absence documentation, sharing the primary key.
      * Maps to the 'dailyAttendance' field in AbsenceDocumentation.
      */
-    @OneToOne(mappedBy = "dailyAttendance", cascade = CascadeType.ALL,
-            fetch = FetchType.LAZY, optional = true)
+    @OneToOne(mappedBy = "attendance", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
     private AbsenceDocumentation absenceDocumentation;
 
 }
