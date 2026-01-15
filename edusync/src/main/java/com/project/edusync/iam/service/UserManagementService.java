@@ -1,0 +1,50 @@
+package com.project.edusync.iam.service;
+
+import com.project.edusync.iam.model.dto.*;
+import com.project.edusync.iam.model.entity.User;
+
+/**
+ * Service interface for High-Level User Management.
+ * <p>
+ * Orchestrates the creation of complex user entities (Student, Staff, etc.), ensuring
+ * data consistency across Identity, Profile, and Role-Specific tables.
+ * </p>
+ */
+public interface UserManagementService {
+
+    /**
+     * Creates a School Admin user.
+     * @param request DTO containing identity and profile details.
+     * @return The created User entity.
+     * @throws com.project.edusync.common.exception.iam.UserAlreadyExistsException if username/email exists.
+     */
+    User createSchoolAdmin(CreateUserRequestDTO request);
+
+    /**
+     * Creates a comprehensive Student record (User + Profile + Student + Demographics + Medical).
+     * @param request The composite DTO with all enrollment data.
+     * @return The created User entity.
+     */
+    User createStudent(CreateStudentRequestDTO request);
+
+    /**
+     * Creates a Teacher with specific academic details.
+     * @param request DTO with teacher-specific fields (certifications, etc).
+     * @return The created User entity.
+     */
+    User createTeacher(CreateTeacherRequestDTO request);
+
+    /**
+     * Creates a Principal with administrative details.
+     * @param request DTO with principal-specific fields.
+     * @return The created User entity.
+     */
+    User createPrincipal(CreatePrincipalRequestDTO request);
+
+    /**
+     * Creates a Librarian with system permissions.
+     * @param request DTO with librarian-specific fields.
+     * @return The created User entity.
+     */
+    User createLibrarian(CreateLibrarianRequestDTO request);
+}
