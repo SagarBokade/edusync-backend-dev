@@ -1,5 +1,6 @@
 package com.project.edusync.uis.mapper;
 
+import com.project.edusync.iam.model.dto.CreateStudentRequestDTO;
 import com.project.edusync.uis.model.dto.profile.StudentProfileDTO;
 import com.project.edusync.uis.model.entity.Student;
 import org.mapstruct.Mapper;
@@ -15,6 +16,12 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface StudentMapper {
 
+    // --- Core Student ---
+    @Mapping(target = "enrollmentNumber", source = "enrollmentNumber")
+    @Mapping(target = "enrollmentDate", source = "enrollmentDate")
+    @Mapping(target = "rollNo", source = "rollNo")
+    @Mapping(target = "active", constant = "true")
+    Student toStudentEntity(CreateStudentRequestDTO dto);
     /**
      * Converts the Student entity to a profile DTO.
      *
