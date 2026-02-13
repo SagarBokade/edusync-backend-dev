@@ -2,6 +2,8 @@
 # DEFAULT CONFIG (Applies to ALL profiles)
 # ===================================================================
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
   application:
     name: edusync
   profiles:
@@ -23,7 +25,7 @@ spring:
   # --- JPA / Hibernate Common Settings ---
   jpa:
     hibernate:
-#      Strictly do not change this to create
+      #      Strictly do not change this to create
       ddl-auto: update # Set in default, can be overridden by 'prod'
     show-sql: true       # Set in default, can be overridden by 'prod'
     properties:
@@ -46,7 +48,7 @@ app:
 
   # URL for the frontend (used to build links in emails)
   frontend:
-      # This should be your frontend's URL (e.g., http://localhost:3000)
+    # This should be your frontend's URL (e.g., http://localhost:3000)
     url: ${APP_FRONTEND_URL}
 ---
 
