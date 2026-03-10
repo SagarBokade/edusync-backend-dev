@@ -1,13 +1,11 @@
 # ===================================================================
-# DEFAULT CONFIG (Applies to ALL profiles)
+# DEFAULT CONFIG (Applies to ALL profiles unless overridden)
 # ===================================================================
 spring:
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration
   application:
     name: edusync
   profiles:
-    active: dev # Run in 'dev' mode by default
+    active: dev
   mail:
     host: ${MAIL_HOST}
     port: ${MAIL_PORT}
@@ -19,15 +17,18 @@ spring:
           auth: true
           starttls:
             enable: true
-    # This is the "From" address that will appear on the email
-    from: ${MAIL_FROM:no-reply@edusync.ai}
+    from: ${MAIL_FROM:no-reply@shikshaintelligence.com}
 
   # --- JPA / Hibernate Common Settings ---
   jpa:
     hibernate:
-      #      Strictly do not change this to create
-      ddl-auto: update # Set in default, can be overridden by 'prod'
-    show-sql: true       # Set in default, can be overridden by 'prod'
+      # SECURITY FIX: Changed from 'update' to 'validate' as a safe default.
+      # 'update' can silently alter/corrupt the schema in production.
+      # Profile-specific overrides are defined below.
+      ddl-auto: validate
+    # SECURITY FIX: Disabled by default to prevent SQL query leakage in logs.
+    # Enabled only in the 'dev' profile override below.
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -40,44 +41,76 @@ app:
     key-id: ${RAZORPAY_KEY_ID}
     key-secret: ${RAZORPAY_KEY_SECRET}
   jwt:
-    # This is security config
     secret-key: ${JWT_SECRET_KEY}
     expirationTime: ${JWT_EXPIRATION_TIME}
     refresh-expirationTime: ${REFRESH_EXPIRATION_TIME}
     password-reset-expirationTime: ${PASSWORD_RESET_TIME}
 
-  # URL for the frontend (used to build links in emails)
   frontend:
-    # This should be your frontend's URL (e.g., http://localhost:3000)
     url: ${APP_FRONTEND_URL}
----
 
+  # SECURITY FIX: Moved from root 'security' namespace to 'app.security'
+  # to avoid conflict with Spring Security's reserved property namespace.
+  security:
+    max-devices: 2
+
+# NOTE: 'api.url' is kept at the root namespace as it is referenced
+# directly via @RequestMapping("${api.url}/...") across all controllers.
 api:
   url: ${BASE_URL}${API_VERSION}
 
+---
 # ===================================================================
-# DEVELOPMENT PROFILE (Active when 'spring.profiles.active=dev')
+# DEVELOPMENT PROFILE (Active when spring.profiles.active=dev)
 # ===================================================================
 spring:
   config:
     activate:
       on-profile: dev
 
-  # --- Database Datasource Configuration ---
   datasource:
     driver-class-name: org.postgresql.Driver
-
-    # Configuration credentials are being read from this .env file
     url: ${DB_URL}?prepareThreshold=0
     username: ${DB_USER}
     password: ${DB_PASS}
-
-    # We will keep the timeout fix
     type: com.zaxxer.hikari.HikariDataSource
     hikari:
       connection-timeout: 30000
 
+  jpa:
+    # Allowed only in dev: auto-syncs entity changes to the DB schema.
+    hibernate:
+      ddl-auto: update
+    # Enabled only in dev for debugging SQL queries.
+    show-sql: true
 
-security:
-  # Max number of active devices (refresh tokens) per user
-  max-devices: 2
+---
+# ===================================================================
+# PRODUCTION PROFILE (Active when spring.profiles.active=prod)
+# ===================================================================
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL}?prepareThreshold=0
+    username: ${DB_USER}
+    password: ${DB_PASS}
+    type: com.zaxxer.hikari.HikariDataSource
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 20
+      minimum-idle: 5
+
+  jpa:
+    # SECURITY: 'validate' ensures schema matches entities without altering it.
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+# SECURITY: Enforce HTTPS in production.
+server:
+  ssl:
+    enabled: true
