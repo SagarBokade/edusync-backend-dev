@@ -14,6 +14,9 @@ import java.util.UUID;
 @Repository
 public interface RoomRepository extends JpaRepository<Room, Long> {
 
+    @Query("SELECT r FROM Room r WHERE r.isActive = true")
+    List<Room> findAllActive();
+
     @Query("SELECT r FROM Room r WHERE r.uuid = :roomId AND r.isActive = true")
     Optional<Room> findActiveById(UUID roomId);
 
