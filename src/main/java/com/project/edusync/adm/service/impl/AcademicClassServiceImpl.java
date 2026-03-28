@@ -64,7 +64,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         AcademicClass existingClass = academicClassRepository.findById(classId)
                 .orElseThrow(() -> {
                     log.warn("No class with id {} to update", classId);
-                    return new RuntimeException("No resource found to update");
+                    return new ResourceNotFoundException("No resource found to update");
                 });
         existingClass.setName(academicClassRequestDto.getName());
 
@@ -125,7 +125,7 @@ public class AcademicClassServiceImpl implements AcademicClassService {
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> {
                     log.warn("Section with id {} not found ",sectionId);
-                    return new RuntimeException("no such section found");
+                    return new ResourceNotFoundException("no such section found");
                 });
         return toSectionResponseDto(section); // Use private helper
     }

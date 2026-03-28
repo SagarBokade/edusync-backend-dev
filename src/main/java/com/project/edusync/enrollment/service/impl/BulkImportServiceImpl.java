@@ -6,6 +6,7 @@ import com.opencsv.exceptions.CsvException;
 import com.opencsv.exceptions.CsvValidationException;
 import com.project.edusync.adm.model.entity.Section;
 import com.project.edusync.adm.repository.SectionRepository;
+import com.project.edusync.common.exception.enrollment.BulkImportException;
 import com.project.edusync.common.exception.enrollment.InvalidCsvHeaderException;
 import com.project.edusync.common.exception.enrollment.RelatedResourceNotFoundException;
 import com.project.edusync.common.exception.enrollment.ResourceDuplicateException;
@@ -24,6 +25,7 @@ import com.project.edusync.uis.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -158,7 +160,7 @@ public class BulkImportServiceImpl implements BulkImportService {
             } else if (USER_TYPE_STAFF.equalsIgnoreCase(userType)) {
                 expectedHeader = STAFF_HEADER;
             } else {
-                throw new IllegalArgumentException("Invalid userType: " + userType);
+                throw new BulkImportException("Invalid userType: " + userType, HttpStatus.BAD_REQUEST);
             }
 
             List<String> actualHeader = Arrays.asList(header);
@@ -326,7 +328,7 @@ public class BulkImportServiceImpl implements BulkImportService {
                 processLibrarianRow(row, roleCache);
                 break;
             default:
-                throw new IllegalArgumentException("Unsupported staff type '" + staffType + "' for bulk import.");
+                throw new BulkImportException("Unsupported staff type '" + staffType + "' for bulk import.", HttpStatus.BAD_REQUEST);
         }
     }
 
