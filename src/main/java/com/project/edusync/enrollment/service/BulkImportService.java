@@ -20,4 +20,12 @@ public interface BulkImportService {
      * @throws IllegalArgumentException if userType is invalid.
      */
     BulkImportReportDTO importUsers(MultipartFile file, String userType, String sessionId) throws IOException, IllegalArgumentException;
+
+    /**
+     * Imports students and guardians from two separate CSV files.
+     * Guardians are matched by student enrollment number and linked after each student row is created.
+     */
+    BulkImportReportDTO importStudentsWithGuardians(MultipartFile studentsFile,
+                                                    MultipartFile guardiansFile,
+                                                    String sessionId) throws IOException;
 }
