@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 /**
  * Represents a single real-time progress event emitted via SSE
  * during a bulk import job.
@@ -34,6 +36,21 @@ public class BulkImportProgressEvent {
 
     /** Human-readable identifier for the row (email or enrollmentNumber). */
     private String identifier;
+
+    /** Current import context, e.g. students, staff, students-with-guardians. */
+    private String userType;
+
+    /** Student enrollment number associated with the processed row. */
+    private String studentEnrollmentNumber;
+
+    /** Guardian usernames (phone numbers) linked for this row. */
+    private List<String> guardianUsernames;
+
+    /** Number of guardians newly created while processing the row. */
+    private int guardiansCreated;
+
+    /** Number of guardian links processed for the row. */
+    private int guardiansLinked;
 
     /** Error message if the row failed; null on success. */
     private String errorMessage;
