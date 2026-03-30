@@ -1,10 +1,8 @@
 package com.project.edusync.em.model.service.serviceImpl;
 
 import com.project.edusync.adm.model.entity.AcademicClass;
-import com.project.edusync.adm.model.entity.Section;
 import com.project.edusync.adm.model.entity.Subject;
 import com.project.edusync.adm.repository.AcademicClassRepository;
-import com.project.edusync.adm.repository.SectionRepository;
 import com.project.edusync.adm.repository.SubjectRepository;
 import com.project.edusync.common.exception.emException.EdusyncException;
 import com.project.edusync.common.exception.emException.ExamNotFoundException;
@@ -33,7 +31,6 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     private final ExamRepository examRepository;
     // Repositories for ADM entities
     private final AcademicClassRepository academicClassRepository;
-    private final SectionRepository sectionRepository;
     private final SubjectRepository subjectRepository;
 
     @Override
@@ -101,7 +98,6 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     }
 
     private void mapDtoToEntity(ExamScheduleRequestDTO dto, ExamSchedule entity) {
-        // Fetch related ADM entities. Assuming they have 'findByUuid' methods.
         AcademicClass academicClass = academicClassRepository.findById(dto.getClassId())
                 .orElseThrow(() -> new EdusyncException("ADM-404", "Class not found", HttpStatus.NOT_FOUND));
         entity.setAcademicClass(academicClass);
@@ -110,42 +106,20 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
                 .orElseThrow(() -> new EdusyncException("ADM-404", "Subject not found", HttpStatus.NOT_FOUND));
         entity.setSubject(subject);
 
-        if (dto.getSectionId() != null) {
-            Section section = sectionRepository.findById(dto.getSectionId())
-                    .orElseThrow(() -> new EdusyncException("ADM-404", "Section not found", HttpStatus.NOT_FOUND));
-            // Validate section belongs to class
-            if (!section.getAcademicClass().equals(academicClass)) {
-                throw new EdusyncException("EM-400", "Section does not belong to the selected class", HttpStatus.BAD_REQUEST);
-            }
-            entity.setSection(section);
-        } else {
-            entity.setSection(null);
-        }
-
         entity.setExamDate(dto.getExamDate());
-        entity.setStartTime(dto.getStartTime());
-        entity.setEndTime(dto.getEndTime());
-        entity.setMaxMarks(dto.getMaxMarks());
-        entity.setPassingMarks(dto.getPassingMarks());
-        entity.setRoomNumber(dto.getRoomNumber());
+        entity.setMaxMarks(dto.getMaxMarks().intValue()); // convert if needed
     }
 
     private ExamScheduleResponseDTO mapEntityToResponse(ExamSchedule entity) {
         return ExamScheduleResponseDTO.builder()
-                .scheduleId(entity.getScheduleId())
+                .scheduleId(entity.getId())
                 .examUuid(entity.getExam().getUuid())
                 .classId(entity.getAcademicClass().getUuid())
                 .className(entity.getAcademicClass().getName())
-                .sectionId(entity.getSection() != null ? entity.getSection().getUuid() : null)
-                .sectionName(entity.getSection() != null ? entity.getSection().getSectionName() : null)
                 .subjectId(entity.getSubject().getUuid())
                 .subjectName(entity.getSubject().getName())
                 .examDate(entity.getExamDate())
-                .startTime(entity.getStartTime())
-                .endTime(entity.getEndTime())
-                .maxMarks(entity.getMaxMarks())
-                .passingMarks(entity.getPassingMarks())
-                .roomNumber(entity.getRoomNumber())
+                .maxMarks(java.math.BigDecimal.valueOf(entity.getMaxMarks())) // convert Integer to BigDecimal
                 .build();
     }
 }
