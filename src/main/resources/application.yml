@@ -85,6 +85,32 @@ app:
 api:
   url: ${BASE_URL}${API_VERSION}
 
+logging:
+  # Log file path — read by logback-spring.xml via <springProperty source="logging.file.name"/>
+  # Also used by the SuperAdmin /api/v1/super/logs tail endpoint .
+  file:
+    name: ${LOG_FILE_NAME:logs/edusync-dev.log}
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health, info, metrics, loggers, httpexchanges, scheduledtasks
+  endpoint:
+    health:
+      show-details: always
+    httpexchanges:
+      enabled: true
+  httpexchanges:
+    recording:
+      enabled: true
+  info:
+    git:
+      mode: full
+    build:
+      enabled: true
+
 resilience4j:
   circuitbreaker:
     instances:
