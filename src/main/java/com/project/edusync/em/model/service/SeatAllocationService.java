@@ -12,6 +12,7 @@ import com.project.edusync.em.model.dto.response.SeatAvailabilityDTO;
 import com.project.edusync.em.model.entity.ExamSchedule;
 import com.project.edusync.em.model.entity.Seat;
 import com.project.edusync.em.model.entity.SeatAllocation;
+import com.project.edusync.em.model.enums.SeatPosition;
 import com.project.edusync.em.model.repository.ExamScheduleRepository;
 import com.project.edusync.em.model.repository.SeatAllocationRepository;
 import com.project.edusync.em.model.repository.SeatRepository;
@@ -161,6 +162,7 @@ public class SeatAllocationService {
                     .isFull(availableCapacity <= 0)
                     .maxStudentsPerSeat(maxPerSeat)
                     .totalStudentsToSeat(totalStudents)
+                    .floorNumber(room.getFloorNumber())
                     .build();
             })
             .sorted(Comparator.comparingInt(RoomAvailabilityDTO::getAvailableCapacity).reversed())
@@ -216,6 +218,14 @@ public class SeatAllocationService {
 
                 int availableSlots = isFull ? 0 : (effectiveCapacity - occupied);
 
+                // Fetch occupied positions to populate grid metadata
+                List<String> occupiedPositionsList = allocationRepository
+                    .findOccupiedPositionsPerSeatInRoom(room.getId(), start, end)
+                    .stream()
+                    .filter(row -> ((Long) row[0]).equals(s.getId()))
+                    .map(row -> ((SeatPosition) row[1]).name())
+                    .collect(Collectors.toList());
+
                 return SeatAvailabilityDTO.builder()
                     .seatId(s.getId())
                     .label(s.getLabel())
@@ -226,6 +236,7 @@ public class SeatAllocationService {
                     .availableSlots(Math.max(0, availableSlots))
                     .isFull(isFull)
                     .available(!isFull) // backward compat
+                    .occupiedPositions(occupiedPositionsList)
                     .build();
             })
             .collect(Collectors.toList());
@@ -279,12 +290,18 @@ public class SeatAllocationService {
                 "Seat is full (" + currentOccupancy + "/" + maxPerSeat + "). Cannot assign more students.");
         }
 
+        // Resolve position
+        Map<Long, Set<SeatPosition>> positionMap = buildPositionMap(room.getId(), start, end);
+        Set<SeatPosition> occupiedPositions = positionMap.getOrDefault(seat.getId(), EnumSet.noneOf(SeatPosition.class));
+        SeatPosition position = resolvePosition(maxPerSeat, occupiedPositions);
+
         SeatAllocation allocation = new SeatAllocation();
         allocation.setSeat(seat);
         allocation.setStudent(student);
         allocation.setExamSchedule(schedule);
         allocation.setStartTime(start);
         allocation.setEndTime(end);
+        allocation.setPosition(position);
 
         return toResponse(allocationRepository.save(allocation));
     }
@@ -380,6 +397,9 @@ public class SeatAllocationService {
                 .thenComparingInt(Seat::getColumnNumber))
             .collect(Collectors.toList());
 
+        // Pre-load position map
+        Map<Long, Set<SeatPosition>> positionMap = buildPositionMap(room.getId(), start, end);
+
         // 8. Build allocations — fill each seat up to maxPerSeat
         List<SeatAllocation> newAllocations = new ArrayList<>(toAllocate);
         int studentIdx = 0;
@@ -388,13 +408,21 @@ public class SeatAllocationService {
             if (studentIdx >= toAllocate) break;
 
             long currentOccupancy = seatOccupancy.getOrDefault(seat.getId(), 0L);
+            Set<SeatPosition> occupied = positionMap.computeIfAbsent(
+                seat.getId(), k -> EnumSet.noneOf(SeatPosition.class));
+
             while (currentOccupancy < maxPerSeat && studentIdx < toAllocate) {
+                SeatPosition position = resolvePosition(maxPerSeat, occupied);
+
                 SeatAllocation sa = new SeatAllocation();
                 sa.setSeat(seat);
                 sa.setStudent(unallocated.get(studentIdx));
                 sa.setExamSchedule(schedule);
                 sa.setStartTime(start);
                 sa.setEndTime(end);
+                sa.setPosition(position);
+
+                occupied.add(position);
                 newAllocations.add(sa);
                 currentOccupancy++;
                 studentIdx++;
@@ -419,7 +447,22 @@ public class SeatAllocationService {
     @Transactional(readOnly = true)
     public List<SeatAllocationResponseDTO> getAllocationsForSchedule(Long examScheduleId) {
         return allocationRepository.findByExamScheduleWithDetails(examScheduleId)
-            .stream().map(this::toResponse).collect(Collectors.toList());
+            .stream()
+            .map(this::toResponse)
+            .sorted(Comparator.comparing(SeatAllocationResponseDTO::getRollNo, Comparator.nullsLast(Comparator.naturalOrder())))
+            .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public SeatAllocationResponseDTO findAllocationByRollNumber(Long examScheduleId, Integer rollNo) {
+        Student student = studentRepository.findByRollNo(rollNo)
+            .orElseThrow(() -> new ResourceNotFoundException("Student not found with roll number: " + rollNo));
+            
+        SeatAllocation allocation = allocationRepository
+            .findByExamScheduleIdAndStudentId(examScheduleId, student.getId())
+            .orElseThrow(() -> new ResourceNotFoundException("No seat allocation found for roll number " + rollNo + " in schedule " + examScheduleId));
+            
+        return toResponse(allocation);
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -441,6 +484,24 @@ public class SeatAllocationService {
     }
 
     // ── Private helpers ──────────────────────────────────────────
+
+    private SeatPosition resolvePosition(int maxPerSeat, Set<SeatPosition> occupiedPositions) {
+        if (maxPerSeat == 1) return SeatPosition.SINGLE;
+        if (!occupiedPositions.contains(SeatPosition.LEFT)) return SeatPosition.LEFT;
+        if (!occupiedPositions.contains(SeatPosition.RIGHT)) return SeatPosition.RIGHT;
+        throw new BadRequestException("Seat is full — both LEFT and RIGHT positions are occupied");
+    }
+
+    private Map<Long, Set<SeatPosition>> buildPositionMap(Long roomId, LocalDateTime start, LocalDateTime end) {
+        Map<Long, Set<SeatPosition>> map = new HashMap<>();
+        allocationRepository.findOccupiedPositionsPerSeatInRoom(roomId, start, end)
+            .forEach(row -> {
+                Long seatId = (Long) row[0];
+                SeatPosition pos = (SeatPosition) row[1];
+                map.computeIfAbsent(seatId, k -> EnumSet.noneOf(SeatPosition.class)).add(pos);
+            });
+        return map;
+    }
 
     private ExamSchedule fetchSchedule(Long id) {
         return examScheduleRepository.findById(id)
@@ -472,9 +533,9 @@ public class SeatAllocationService {
 
     private List<Student> resolveStudents(ExamSchedule s) {
         if (s.getSection() != null) {
-            return studentRepository.findBySectionId(s.getSection().getId());
+            return studentRepository.findBySectionIdOrderByRollNoAsc(s.getSection().getId());
         } else if (s.getAcademicClass() != null) {
-            return studentRepository.findBySection_AcademicClass_Id(s.getAcademicClass().getId());
+            return studentRepository.findBySection_AcademicClass_IdOrderByRollNoAsc(s.getAcademicClass().getId());
         }
         return Collections.emptyList();
     }
@@ -482,11 +543,17 @@ public class SeatAllocationService {
     private SeatAllocationResponseDTO toResponse(SeatAllocation sa) {
         String firstName = sa.getStudent().getUserProfile().getFirstName();
         String lastName = sa.getStudent().getUserProfile().getLastName();
+        String positionLabel = sa.getPosition() == SeatPosition.SINGLE
+            ? "" : " - " + sa.getPosition().name();
         return SeatAllocationResponseDTO.builder()
             .allocationId(sa.getId())
             .studentName((firstName + " " + (lastName != null ? lastName : "")).trim())
             .enrollmentNumber(sa.getStudent().getEnrollmentNumber())
-            .seatLabel(sa.getSeat().getLabel())
+            .rollNo(sa.getStudent().getRollNo())
+            .seatLabel(sa.getSeat().getLabel() + positionLabel)
+            .position(sa.getPosition().name())
+            .seatId(sa.getSeat().getId())
+            .studentId(sa.getStudent().getUuid())
             .roomName(sa.getSeat().getRoom().getName())
             .rowNumber(sa.getSeat().getRowNumber())
             .columnNumber(sa.getSeat().getColumnNumber())

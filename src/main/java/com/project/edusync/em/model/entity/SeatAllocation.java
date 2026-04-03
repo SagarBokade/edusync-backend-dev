@@ -25,10 +25,9 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "seat_allocation",
     uniqueConstraints = {
-        // Changed: seat+schedule is no longer unique — seat+schedule+student is unique
-        // This allows multiple students on the same seat for the same schedule
-        @UniqueConstraint(name = "uk_seat_alloc_seat_schedule_student",
-            columnNames = {"seat_id", "exam_schedule_id", "student_id"}),
+        // Ensures no two students can claim the same position on a seat
+        @UniqueConstraint(name = "uk_seat_alloc_seat_schedule_position",
+            columnNames = {"seat_id", "exam_schedule_id", "position"}),
         // A student still can only have ONE seat per schedule
         @UniqueConstraint(name = "uk_seat_alloc_student_schedule",
             columnNames = {"student_id", "exam_schedule_id"})
@@ -39,7 +38,9 @@ import java.time.LocalDateTime;
         @Index(name = "idx_seat_alloc_schedule",
             columnList = "exam_schedule_id"),
         @Index(name = "idx_seat_alloc_student_time",
-            columnList = "student_id, start_time, end_time")
+            columnList = "student_id, start_time, end_time"),
+        @Index(name = "idx_seat_alloc_position",
+            columnList = "seat_id, exam_schedule_id, position")
     })
 public class SeatAllocation {
 
@@ -58,6 +59,10 @@ public class SeatAllocation {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "exam_schedule_id", nullable = false)
     private ExamSchedule examSchedule;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "position", nullable = false, length = 6)
+    private com.project.edusync.em.model.enums.SeatPosition position;
 
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;

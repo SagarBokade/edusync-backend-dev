@@ -19,7 +19,11 @@ public class SeatAllocationResponseDTO {
     private Long allocationId;
     private String studentName;
     private String enrollmentNumber;
+    private Integer rollNo;
     private String seatLabel;
+    private String position;
+    private Long seatId;
+    private java.util.UUID studentId;
     private String roomName;
     private int rowNumber;
     private int columnNumber;

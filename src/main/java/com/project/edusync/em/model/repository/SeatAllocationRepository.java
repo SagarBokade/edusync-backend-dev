@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Repository
@@ -165,4 +166,33 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
     List<Object[]> countAllocationsOnBlockedSeatsPerRoom(
         @Param("startTime") LocalDateTime startTime,
         @Param("endTime") LocalDateTime endTime);
+
+    // ── 12. Find occupied positions for seats in a room during a time window ──
+    // Returns [seatId, position] pairs for all allocations overlapping the window.
+    // Used to determine which position (LEFT/RIGHT) is already taken.
+    @Query("""
+        SELECT sa.seat.id, sa.position
+        FROM SeatAllocation sa
+        WHERE sa.seat.room.id = :roomId
+          AND sa.startTime < :endTime
+          AND sa.endTime > :startTime
+        """)
+    List<Object[]> findOccupiedPositionsPerSeatInRoom(
+        @Param("roomId") Long roomId,
+        @Param("startTime") LocalDateTime startTime,
+        @Param("endTime") LocalDateTime endTime);
+
+    // ── 13. Find allocation for a specific student in a specific schedule ──
+    @Query("""
+        SELECT sa FROM SeatAllocation sa
+        JOIN FETCH sa.seat s
+        JOIN FETCH s.room r
+        JOIN FETCH sa.student st
+        JOIN FETCH st.userProfile up
+        WHERE sa.examSchedule.id = :examScheduleId
+          AND sa.student.id = :studentId
+        """)
+    Optional<SeatAllocation> findByExamScheduleIdAndStudentId(
+        @Param("examScheduleId") Long examScheduleId,
+        @Param("studentId") Long studentId);
 }

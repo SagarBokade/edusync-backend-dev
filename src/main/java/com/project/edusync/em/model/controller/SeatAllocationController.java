@@ -52,6 +52,13 @@ public class SeatAllocationController {
         return ResponseEntity.ok(seatAllocationService.getAllocationsForSchedule(examScheduleId));
     }
 
+    @GetMapping("/roll/{rollNo}")
+    public ResponseEntity<SeatAllocationResponseDTO> findByRollNumber(
+            @PathVariable Integer rollNo,
+            @RequestParam Long examScheduleId) {
+        return ResponseEntity.ok(seatAllocationService.findAllocationByRollNumber(examScheduleId, rollNo));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAllocation(@PathVariable Long id) {
         seatAllocationService.deleteAllocation(id);

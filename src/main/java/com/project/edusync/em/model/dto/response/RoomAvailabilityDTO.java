@@ -42,6 +42,8 @@ public class RoomAvailabilityDTO {
 
     private int totalStudentsToSeat;
 
+    private Integer floorNumber;
+
     // ── Backward-compatible aliases ────────────────────────────────
     /** @deprecated Use {@link #occupiedCapacity} */
     public int getOccupiedSeats() { return occupiedCapacity; }

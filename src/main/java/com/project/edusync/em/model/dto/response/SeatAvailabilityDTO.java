@@ -40,4 +40,7 @@ public class SeatAvailabilityDTO {
 
     /** Name of the occupying student (only set for single-seat mode) */
     private String occupiedByStudentName;
+
+    /** List of occupied position names, e.g. ["LEFT"] */
+    private java.util.List<String> occupiedPositions;
 }
