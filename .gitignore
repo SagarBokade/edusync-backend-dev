@@ -50,3 +50,4 @@ build/
 src/main/java/com/project/edusync/common/security/WebSecurityConfig.java
 src/main/resources/application.yml
 pom.xml
+import.sql

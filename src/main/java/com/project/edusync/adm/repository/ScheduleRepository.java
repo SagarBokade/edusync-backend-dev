@@ -1,6 +1,7 @@
 package com.project.edusync.adm.repository;
 
 import com.project.edusync.adm.model.entity.Schedule;
+import com.project.edusync.adm.model.entity.Timeslot;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -57,6 +58,9 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
 
     @Query("SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END FROM Schedule s WHERE s.uuid = :scheduleId AND s.isActive = true")
     boolean existsActiveById(UUID scheduleId);
+
+    @Query("SELECT CASE WHEN COUNT(s) > 0 THEN true ELSE false END FROM Schedule s WHERE s.room.uuid = :roomId AND s.isActive = true")
+    boolean existsActiveByRoomUuid(UUID roomId);
 
     @Transactional
     @Modifying
@@ -218,4 +222,20 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
             ORDER BY ts.startTime ASC
             """)
     List<Schedule> findDaySchedule(Long sectionId, Short dayOfWeek);
+
+    @Query("""
+            SELECT COUNT(DISTINCT s.section.id)
+            FROM Schedule s
+            WHERE s.teacher.id = :teacherId
+              AND s.isActive = true
+            """)
+    long countDistinctActiveSectionsByTeacherId(@Param("teacherId") Long teacherId);
+
+    @Query("""
+            SELECT DISTINCT s.timeslot
+            FROM Schedule s
+            WHERE s.teacher.id = :teacherId
+              AND s.isActive = true
+            """)
+    List<Timeslot> findDistinctActiveTimeslotsByTeacherId(@Param("teacherId") Long teacherId);
 }

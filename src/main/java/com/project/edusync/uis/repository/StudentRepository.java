@@ -15,6 +15,8 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
 
     boolean existsByEnrollmentNumber(String enrollmentNumber);
 
+    Optional<Student> findByEnrollmentNumber(String enrollmentNumber);
+
     Optional<Student> findByUserProfile(UserProfile profile);
 
     /**
@@ -63,4 +65,20 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
 
     @Query("SELECT s FROM Student s WHERE s.section.academicClass.id = :classId")
     List<Student> findByAcademicClassId(@Param("classId") Long classId);
+
+    @Query("SELECT s FROM Student s " +
+           "JOIN FETCH s.userProfile up " +
+           "JOIN FETCH up.user u " +
+           "JOIN FETCH s.section sec " +
+           "JOIN FETCH sec.academicClass ac " +
+           "WHERE s.section.id = :sectionId AND s.isActive = true")
+    java.util.List<Student> findAllBySectionIdWithDetails(@Param("sectionId") Long sectionId);
+
+    @Query("SELECT s FROM Student s " +
+           "JOIN FETCH s.userProfile up " +
+           "JOIN FETCH up.user u " +
+           "JOIN FETCH s.section sec " +
+           "JOIN FETCH sec.academicClass ac " +
+           "WHERE sec.uuid = :sectionUuid AND s.isActive = true")
+    java.util.List<Student> findAllBySectionUuidWithDetails(@Param("sectionUuid") java.util.UUID sectionUuid);
 }
