@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/teacher/schedule")
+@RequestMapping("/api/v1/teacher/schedule")
 @RequiredArgsConstructor
 public class TeacherScheduleController {
 
@@ -19,5 +19,10 @@ public class TeacherScheduleController {
     @GetMapping("/section/{sectionId}")
     public ResponseEntity<List<ScheduleResponseDto>> getScheduleForSection(@PathVariable UUID sectionId) {
         return ResponseEntity.ok(teacherScheduleService.getScheduleForSection(sectionId));
+    }
+
+    @GetMapping("/{staffId}")
+    public ResponseEntity<List<ScheduleResponseDto>> getScheduleForTeacher(@PathVariable Long staffId) {
+        return ResponseEntity.ok(teacherScheduleService.getScheduleForTeacher(staffId));
     }
 }

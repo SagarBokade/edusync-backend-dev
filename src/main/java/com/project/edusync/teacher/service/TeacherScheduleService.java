@@ -17,4 +17,8 @@ public class TeacherScheduleService {
     public List<ScheduleResponseDto> getScheduleForSection(UUID sectionId) {
         return scheduleService.getScheduleForSection(sectionId);
     }
+
+    public List<ScheduleResponseDto> getScheduleForTeacher(Long staffId) {
+        return scheduleService.getScheduleForTeacher(staffId);
+    }
 }
