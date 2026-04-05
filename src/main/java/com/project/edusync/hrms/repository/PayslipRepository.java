@@ -17,6 +17,8 @@ public interface PayslipRepository extends JpaRepository<Payslip, Long> {
     List<Payslip> findByPayrollRun_IdAndActiveTrue(Long payrollRunId);
 
     Page<Payslip> findByStaff_IdAndActiveTrueOrderByPayYearDescPayMonthDesc(Long staffId, Pageable pageable);
+
+    Optional<Payslip> findByUuid(java.util.UUID uuid);
 }
 
 

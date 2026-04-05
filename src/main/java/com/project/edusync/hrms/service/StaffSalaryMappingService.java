@@ -17,12 +17,18 @@ public interface StaffSalaryMappingService {
 
     List<StaffSalaryMappingResponseDTO> getMappingsByStaffId(Long staffId);
 
+    List<StaffSalaryMappingResponseDTO> getMappingsByStaffIdentifier(String staffIdentifier);
+
     StaffSalaryMappingResponseDTO create(StaffSalaryMappingCreateDTO dto);
 
     StaffSalaryMappingResponseDTO update(Long mappingId, StaffSalaryMappingUpdateDTO dto);
 
+    StaffSalaryMappingResponseDTO updateByIdentifier(String identifier, StaffSalaryMappingUpdateDTO dto);
+
     BulkOperationResultDTO bulkCreate(StaffSalaryMappingBulkCreateDTO dto);
 
     ComputedSalaryBreakdownDTO computeBreakdown(Long mappingId);
+
+    ComputedSalaryBreakdownDTO computeBreakdownByIdentifier(String identifier);
 }
 

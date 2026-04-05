@@ -20,6 +20,8 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, Long> {
 
     Optional<PayrollRun> findByIdAndActiveTrue(Long runId);
 
+    Optional<PayrollRun> findByUuid(java.util.UUID uuid);
+
     @Query("""
             SELECT COALESCE(SUM(r.totalNet), 0)
             FROM PayrollRun r

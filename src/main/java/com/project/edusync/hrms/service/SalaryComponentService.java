@@ -14,6 +14,10 @@ public interface SalaryComponentService {
 
     SalaryComponentResponseDTO update(Long componentId, SalaryComponentUpdateDTO dto);
 
+    SalaryComponentResponseDTO updateByIdentifier(String identifier, SalaryComponentUpdateDTO dto);
+
     void delete(Long componentId);
+
+    void deleteByIdentifier(String identifier);
 }
 

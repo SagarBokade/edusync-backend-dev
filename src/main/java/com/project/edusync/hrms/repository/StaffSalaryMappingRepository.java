@@ -68,6 +68,8 @@ public interface StaffSalaryMappingRepository extends JpaRepository<StaffSalaryM
             @Param("onDate") LocalDate onDate,
             @Param("maxDate") LocalDate maxDate
     );
+
+    Optional<StaffSalaryMapping> findByUuid(java.util.UUID uuid);
 }
 
 

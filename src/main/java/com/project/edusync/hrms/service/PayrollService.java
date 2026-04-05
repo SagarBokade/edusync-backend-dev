@@ -14,25 +14,43 @@ public interface PayrollService {
 
     PayrollRunResponseDTO approveRun(Long runId);
 
+    PayrollRunResponseDTO approveRunByIdentifier(String identifier);
+
     PayrollRunResponseDTO disburseRun(Long runId);
+
+    PayrollRunResponseDTO disburseRunByIdentifier(String identifier);
 
     Page<PayslipSummaryDTO> listPayslipsByRun(Long runId, Pageable pageable);
 
+    Page<PayslipSummaryDTO> listPayslipsByRunIdentifier(String identifier, Pageable pageable);
+
     PayslipDetailDTO getPayslipById(Long payslipId);
 
+    PayslipDetailDTO getPayslipByIdentifier(String identifier);
+
     byte[] getPayslipPdf(Long payslipId);
+
+    byte[] getPayslipPdfByIdentifier(String identifier);
 
     Page<PayslipSummaryDTO> listMyPayslips(Pageable pageable);
 
     PayslipDetailDTO getMyPayslipById(Long payslipId);
 
+    PayslipDetailDTO getMyPayslipByIdentifier(String identifier);
+
     byte[] getMyPayslipPdf(Long payslipId);
 
+    byte[] getMyPayslipPdfByIdentifier(String identifier);
+
     Page<PayslipSummaryDTO> listPayslipsByStaff(Long staffId, Pageable pageable);
+
+    Page<PayslipSummaryDTO> listPayslipsByStaffIdentifier(String staffIdentifier, Pageable pageable);
 
     Page<PayrollRunSummaryDTO> listRuns(Pageable pageable);
 
     PayrollRunResponseDTO getRunById(Long runId);
+
+    PayrollRunResponseDTO getRunByIdentifier(String identifier);
 }
 
 
