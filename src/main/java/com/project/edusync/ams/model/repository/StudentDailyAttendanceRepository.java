@@ -15,6 +15,14 @@ import java.util.Optional;
 @Repository
 public interface StudentDailyAttendanceRepository extends JpaRepository<StudentDailyAttendance, Long> {
 
+    interface StudentAttendanceAggregateProjection {
+        Long getStudentId();
+        Long getPresentCount();
+        Long getAbsentCount();
+        Long getLateCount();
+        Long getTotalCount();
+    }
+
     /**
      * Finds the record for a specific student on a specific date, enforcing the unique constraint.
      * @param studentId The logical ID of the student (UIS FK).
@@ -77,4 +85,21 @@ public interface StudentDailyAttendanceRepository extends JpaRepository<StudentD
     // 2. Heatmap Density (Grouped by Date, since Subject-level isn't tracked here)
     @Query(value = "SELECT attendance_date, COUNT(*) FROM student_daily_attendance WHERE student_id IN :studentIds GROUP BY attendance_date", nativeQuery = true)
     List<Object[]> findAbsenceDensityByDate(@Param("studentIds") List<Long> studentIds);
+
+    @Query("""
+            SELECT sda.studentId as studentId,
+                   SUM(CASE WHEN sda.attendanceType.isPresentMark = true THEN 1 ELSE 0 END) as presentCount,
+                   SUM(CASE WHEN sda.attendanceType.isAbsenceMark = true THEN 1 ELSE 0 END) as absentCount,
+                   SUM(CASE WHEN sda.attendanceType.isLateMark = true THEN 1 ELSE 0 END) as lateCount,
+                   COUNT(sda.id) as totalCount
+            FROM StudentDailyAttendance sda
+            WHERE sda.studentId IN :studentIds
+              AND sda.attendanceDate BETWEEN :startDate AND :endDate
+            GROUP BY sda.studentId
+            """)
+    List<StudentAttendanceAggregateProjection> summarizeAttendanceForStudents(
+            @Param("studentIds") List<Long> studentIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }

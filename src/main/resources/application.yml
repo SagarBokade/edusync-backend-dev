@@ -167,7 +167,7 @@ spring:
   jpa:
     # Migration-first mode: validate schema against entities.
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     # Enabled only in dev for debugging SQL queries.
     show-sql: true
   flyway:

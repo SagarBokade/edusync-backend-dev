@@ -491,6 +491,10 @@ public class ScheduleServiceImpl implements ScheduleService {
                                         entity.getSection().getDefaultRoom().getUuid(),
                                         entity.getSection().getDefaultRoom().getName()
                                 ))
+                        .classTeacherUuid(entity.getSection().getClassTeacher() == null ? null : entity.getSection().getClassTeacher().getUuid())
+                        .classTeacherName(entity.getSection().getClassTeacher() == null
+                                ? null
+                                : (entity.getSection().getClassTeacher().getUserProfile().getFirstName() + " " + entity.getSection().getClassTeacher().getUserProfile().getLastName()).trim())
                         .build())
                 .subject(ScheduleResponseDto.NestedSubjectResponseDto.builder()
                         .uuid(entity.getSubject().getUuid())
