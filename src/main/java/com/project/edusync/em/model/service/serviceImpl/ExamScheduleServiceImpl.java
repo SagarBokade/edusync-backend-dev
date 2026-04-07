@@ -6,6 +6,7 @@ import com.project.edusync.adm.model.entity.Subject;
 import com.project.edusync.adm.repository.AcademicClassRepository;
 import com.project.edusync.adm.repository.SectionRepository;
 import com.project.edusync.adm.repository.SubjectRepository;
+import com.project.edusync.common.config.CacheNames;
 import com.project.edusync.common.exception.emException.EdusyncException;
 import com.project.edusync.common.exception.emException.ExamNotFoundException;
 import com.project.edusync.em.model.dto.RequestDTO.ExamScheduleRequestDTO;
@@ -25,6 +26,8 @@ import com.project.edusync.em.model.repository.ExamTemplateRepository;
 import com.project.edusync.em.model.service.ExamScheduleService;
 import com.project.edusync.uis.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,6 +57,10 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     private final com.project.edusync.em.model.repository.InvigilationRepository invigilationRepository;
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(value = CacheNames.ROOM_AVAILABILITY, allEntries = true),
+            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId")
+    })
     public ExamScheduleResponseDTO createSchedule(UUID examUuid, ExamScheduleRequestDTO requestDTO) {
         Exam exam = examRepository.findByUuid(examUuid)
                 .orElseThrow(() -> new ExamNotFoundException(examUuid));
@@ -77,6 +84,10 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     }
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(value = CacheNames.ROOM_AVAILABILITY, allEntries = true),
+            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId")
+    })
     public ExamScheduleResponseDTO updateSchedule(Long scheduleId, ExamScheduleRequestDTO requestDTO) {
         ExamSchedule schedule = examScheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new EdusyncException("EM-404", "Exam Schedule not found", HttpStatus.NOT_FOUND));
@@ -115,6 +126,7 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     }
 
     @Override
+    @CacheEvict(value = {CacheNames.ROOM_AVAILABILITY, CacheNames.SCHEDULE_STUDENTS}, allEntries = true)
     public void deleteSchedule(Long scheduleId) {
         if (!examScheduleRepository.existsById(scheduleId)) {
             throw new EdusyncException("EM-404", "Exam Schedule not found", HttpStatus.NOT_FOUND);

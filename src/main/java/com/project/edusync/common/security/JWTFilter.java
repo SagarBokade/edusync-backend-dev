@@ -28,6 +28,8 @@ import java.util.Map;
 @Component
 public class JWTFilter extends OncePerRequestFilter {
 
+    private static final String BULK_IMPORT_STREAM_PATH = "/bulk-import/stream/";
+
     // 1. We ONLY need AuthUtil. We do not need UserRepository.
     private final AuthUtil authUtil;
     private final CustomUserDetailService customUserDetailService;
@@ -46,8 +48,8 @@ public class JWTFilter extends OncePerRequestFilter {
 
         if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
             token = requestTokenHeader.substring(7); // "Bearer "
-        } else {
-            // Support SSE or other calls that cannot set headers
+        } else if (isQueryTokenSupportedPath(request)) {
+            // Support SSE calls that cannot set Authorization headers
             token = request.getParameter("token");
         }
 
@@ -102,5 +104,10 @@ public class JWTFilter extends OncePerRequestFilter {
 
         // 6. Move to the next filter
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isQueryTokenSupportedPath(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path != null && path.contains(BULK_IMPORT_STREAM_PATH);
     }
 }

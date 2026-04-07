@@ -1,6 +1,7 @@
 package com.project.edusync.em.model.service.serviceImpl;
 
 import com.project.edusync.common.exception.emException.EdusyncException;
+import com.project.edusync.common.config.CacheNames;
 import com.project.edusync.em.model.dto.RequestDTO.ExamTemplateRequestDTO;
 import com.project.edusync.em.model.dto.RequestDTO.TemplateSectionRequestDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.EvaluationStructureResponseDTO;
@@ -11,6 +12,8 @@ import com.project.edusync.em.model.entity.TemplateSection;
 import com.project.edusync.em.model.repository.ExamTemplateRepository;
 import com.project.edusync.em.model.service.ExamTemplateService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,11 +51,13 @@ public class ExamTemplateServiceImpl implements ExamTemplateService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = CacheNames.EXAM_TEMPLATES, key = "#templateId")
     public ExamTemplateResponseDTO getTemplateById(UUID templateId) {
         return toResponse(getTemplateEntityWithSections(templateId));
     }
 
     @Override
+    @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#templateId")
     public ExamTemplateResponseDTO updateTemplate(UUID templateId, ExamTemplateRequestDTO requestDTO) {
         validateTemplateRequest(requestDTO);
 
@@ -66,6 +71,7 @@ public class ExamTemplateServiceImpl implements ExamTemplateService {
     }
 
     @Override
+    @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#templateId")
     public void deleteTemplate(UUID templateId) {
         ExamTemplate template = getTemplateEntityWithSections(templateId);
         assertMutable(template);
