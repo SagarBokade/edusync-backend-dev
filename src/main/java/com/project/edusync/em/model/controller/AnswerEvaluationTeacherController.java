@@ -4,6 +4,7 @@ import com.project.edusync.em.model.dto.RequestDTO.AnnotationRequestDTO;
 import com.project.edusync.em.model.dto.RequestDTO.SaveEvaluationMarksRequestDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.AnnotationResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.AnswerEvaluationStructureResponseDTO;
+import com.project.edusync.em.model.dto.ResponseDTO.AnswerSheetImageGroupResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.AnswerSheetUploadResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.EvaluationAssignmentResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.EvaluationResultResponseDTO;
@@ -41,12 +42,43 @@ public class AnswerEvaluationTeacherController {
         return ResponseEntity.ok(answerEvaluationService.getStudentsForAssignedSchedule(scheduleId));
     }
 
+    @GetMapping("/evaluation/{scheduleId}/students/paged")
+    public ResponseEntity<Page<TeacherEvaluationStudentResponseDTO>> getStudentsForSchedulePaged(
+            @PathVariable Long scheduleId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size) {
+        return ResponseEntity.ok(answerEvaluationService.getStudentsForAssignedSchedule(scheduleId, page, size));
+    }
+
     @PostMapping(value = "/answer-sheets/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AnswerSheetUploadResponseDTO> uploadAnswerSheet(
             @RequestParam Long scheduleId,
             @RequestParam UUID studentId,
             @RequestPart("file") MultipartFile file) {
         return ResponseEntity.ok(answerEvaluationService.uploadAnswerSheet(scheduleId, studentId, file));
+    }
+
+    @PostMapping(value = "/answer-sheets/images/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<AnswerSheetImageGroupResponseDTO> uploadAnswerSheetImages(
+            @RequestParam Long scheduleId,
+            @RequestParam UUID studentId,
+            @RequestPart("files") List<MultipartFile> files,
+            @RequestParam(required = false) List<Integer> pageNumbers) {
+        return ResponseEntity.ok(answerEvaluationService.uploadAnswerSheetImages(scheduleId, studentId, files, pageNumbers));
+    }
+
+    @GetMapping("/answer-sheets/{studentId}/{scheduleId}")
+    public ResponseEntity<AnswerSheetImageGroupResponseDTO> getAnswerSheetImages(
+            @PathVariable UUID studentId,
+            @PathVariable Long scheduleId) {
+        return ResponseEntity.ok(answerEvaluationService.getAnswerSheetImages(studentId, scheduleId));
+    }
+
+    @PostMapping("/answer-sheets/images/complete")
+    public ResponseEntity<AnswerSheetImageGroupResponseDTO> completeImageUpload(
+            @RequestParam Long scheduleId,
+            @RequestParam UUID studentId) {
+        return ResponseEntity.ok(answerEvaluationService.completeImageUpload(scheduleId, studentId));
     }
 
     @GetMapping("/evaluation/{answerSheetId}/structure")

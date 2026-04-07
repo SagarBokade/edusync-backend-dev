@@ -44,7 +44,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
-import jakarta.persistence.EntityManager;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -65,7 +64,9 @@ import java.util.stream.Collectors;
 public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
 
     private static final long PDF_MAX_SIZE_BYTES = 10L * 1024 * 1024;
+    private static final long IMAGE_MAX_SIZE_BYTES_DEFAULT = 5L * 1024 * 1024;
     private static final String PDF_MAGIC = "%PDF-";
+    private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/jpg", "image/png");
     private static final Set<String> ALLOWED_METADATA_KEYS = Set.of("color", "strokeWidth", "path");
 
     private final EvaluationAssignmentRepository assignmentRepository;
@@ -73,19 +74,22 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     private final EvaluationResultRepository evaluationResultRepository;
     private final QuestionMarkRepository questionMarkRepository;
     private final AnswerSheetAnnotationRepository annotationRepository;
+    private final AnswerSheetImageRepository answerSheetImageRepository;
     private final ExamScheduleRepository examScheduleRepository;
     private final StudentRepository studentRepository;
     private final StaffRepository staffRepository;
     private final AuthUtil authUtil;
     private final EvaluationAuditService evaluationAuditService;
     private final EvaluationDraftStoreService evaluationDraftStoreService;
-    private final EntityManager entityManager;
 
     @Value("${app.evaluation.storage.private-dir:uploads-private/answer-sheets}")
     private String privateStorageDir;
 
     @Value("${app.evaluation.upload.max-per-minute:20}")
     private int maxUploadsPerMinute;
+
+    @Value("${app.evaluation.image.max-size-bytes:5242880}")
+    private long maxImageSizeBytes;
 
     @Value("${app.evaluation.file-signing-secret:${app.jwt.secret-key}}")
     private String fileSigningSecret;
@@ -176,18 +180,33 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .collect(Collectors.toMap(a -> a.getStudent().getId(), a -> a, (a, b) -> a));
 
         return students.stream()
-                .map(student -> {
-                    AnswerSheet sheet = answerSheetByStudentId.get(student.getId());
-                    String fullName = student.getUserProfile().getFirstName() + " " + student.getUserProfile().getLastName();
-                    return TeacherEvaluationStudentResponseDTO.builder()
-                            .studentId(student.getUuid())
-                            .studentName(fullName.trim())
-                            .enrollmentNumber(student.getEnrollmentNumber())
-                            .answerSheetId(sheet != null ? sheet.getId() : null)
-                            .answerSheetStatus(sheet != null ? sheet.getStatus() : null)
-                            .build();
-                })
+                .map(student -> toTeacherEvaluationStudentResponse(student, answerSheetByStudentId.get(student.getId())))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TeacherEvaluationStudentResponseDTO> getStudentsForAssignedSchedule(Long scheduleId, int page, int size) {
+        Staff teacher = getCurrentTeacher();
+        ensureTeacherAssigned(scheduleId, teacher.getId());
+        ExamSchedule schedule = getSchedule(scheduleId);
+
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(Math.min(size, 100), 1);
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
+
+        Page<Student> students = schedule.getSection() != null
+                ? studentRepository.findBySectionIdOrderByRollNoAsc(schedule.getSection().getId(), pageable)
+                : studentRepository.findBySection_AcademicClass_IdOrderByRollNoAsc(schedule.getAcademicClass().getId(), pageable);
+
+        Map<Long, AnswerSheet> answerSheetByStudentId = answerSheetRepository.findByExamScheduleId(scheduleId).stream()
+                .collect(Collectors.toMap(a -> a.getStudent().getId(), a -> a, (a, b) -> a));
+
+        List<TeacherEvaluationStudentResponseDTO> content = students.getContent().stream()
+                .map(student -> toTeacherEvaluationStudentResponse(student, answerSheetByStudentId.get(student.getId())))
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(content, pageable, students.getTotalElements());
     }
 
     @Override
@@ -256,6 +275,107 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .status(saved.getStatus())
                 .createdAt(saved.getCreatedAt())
                 .build();
+    }
+
+    @Override
+    @CacheEvict(value = CacheNames.SCHEDULE_STUDENTS, allEntries = true)
+    public AnswerSheetImageGroupResponseDTO uploadAnswerSheetImages(Long scheduleId,
+                                                                     UUID studentId,
+                                                                     List<MultipartFile> files,
+                                                                     List<Integer> pageNumbers) {
+        Staff teacher = getCurrentTeacher();
+        ensureTeacherAssigned(scheduleId, teacher.getId());
+        enforceUploadRateLimit(teacher.getId());
+
+        if (files == null || files.isEmpty()) {
+            throw new EdusyncException("EVAL-400", "At least one image is required", HttpStatus.BAD_REQUEST);
+        }
+
+        ExamSchedule schedule = getSchedule(scheduleId);
+        Student student = getValidatedStudentForSchedule(studentId, schedule);
+        List<Integer> resolvedPages = resolvePageNumbers(pageNumbers, files.size());
+
+        AnswerSheet answerSheet = answerSheetRepository.findByExamScheduleIdAndStudentId(scheduleId, student.getId())
+                .orElseGet(AnswerSheet::new);
+        if (answerSheet.getId() != null && !Objects.equals(answerSheet.getUploadedByTeacher().getId(), teacher.getId())) {
+            throw new EdusyncException("EVAL-403", "Only the assigned uploader can update these images", HttpStatus.FORBIDDEN);
+        }
+
+        answerSheet.setExamSchedule(schedule);
+        answerSheet.setStudent(student);
+        answerSheet.setUploadedByTeacher(teacher);
+        answerSheet.setStatus(AnswerSheetStatus.UPLOADED);
+        AnswerSheet savedSheet = answerSheetRepository.save(answerSheet);
+
+        Map<Integer, AnswerSheetImage> existingByPage = answerSheetImageRepository
+                .findByAnswerSheetIdOrderByPageNumberAsc(savedSheet.getId())
+                .stream()
+                .collect(Collectors.toMap(AnswerSheetImage::getPageNumber, image -> image, (left, right) -> left, LinkedHashMap::new));
+
+        List<AnswerSheetImage> toSave = new ArrayList<>();
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            Integer pageNumber = resolvedPages.get(i);
+            validateImageUpload(file, pageNumber);
+            String imageUrl = uploadImageToCloudinary(file, savedSheet.getId(), pageNumber);
+
+            AnswerSheetImage image = existingByPage.getOrDefault(pageNumber, AnswerSheetImage.builder()
+                    .answerSheet(savedSheet)
+                    .pageNumber(pageNumber)
+                    .build());
+            image.setImageUrl(imageUrl);
+            toSave.add(image);
+        }
+
+        answerSheetImageRepository.saveAll(toSave);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("scheduleId", scheduleId);
+        metadata.put("studentId", student.getId());
+        metadata.put("uploadedPages", resolvedPages.size());
+        evaluationAuditService.record(EvaluationAuditEventType.ANSWER_SHEET_UPLOADED, teacher, null, savedSheet, null, metadata);
+        return toImageGroupResponse(savedSheet);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AnswerSheetImageGroupResponseDTO getAnswerSheetImages(UUID studentId, Long scheduleId) {
+        Staff teacher = getCurrentTeacher();
+        ensureTeacherAssigned(scheduleId, teacher.getId());
+
+        Student student = studentRepository.findByUuid(studentId)
+                .orElseThrow(() -> new EdusyncException("EVAL-404", "Student not found", HttpStatus.NOT_FOUND));
+        AnswerSheet answerSheet = answerSheetRepository.findByExamScheduleIdAndStudentId(scheduleId, student.getId())
+                .orElseThrow(() -> new EdusyncException("EVAL-404", "Answer sheet images not found", HttpStatus.NOT_FOUND));
+        return toImageGroupResponse(answerSheet);
+    }
+
+    @Override
+    @CacheEvict(value = CacheNames.SCHEDULE_STUDENTS, allEntries = true)
+    public AnswerSheetImageGroupResponseDTO completeImageUpload(Long scheduleId, UUID studentId) {
+        Staff teacher = getCurrentTeacher();
+        ensureTeacherAssigned(scheduleId, teacher.getId());
+
+        Student student = studentRepository.findByUuid(studentId)
+                .orElseThrow(() -> new EdusyncException("EVAL-404", "Student not found", HttpStatus.NOT_FOUND));
+        AnswerSheet answerSheet = answerSheetRepository.findByExamScheduleIdAndStudentId(scheduleId, student.getId())
+                .orElseThrow(() -> new EdusyncException("EVAL-404", "Answer sheet not found", HttpStatus.NOT_FOUND));
+
+        if (!Objects.equals(answerSheet.getUploadedByTeacher().getId(), teacher.getId())) {
+            throw new EdusyncException("EVAL-403", "Only the assigned uploader can mark upload complete", HttpStatus.FORBIDDEN);
+        }
+        long imageCount = answerSheetImageRepository.findByAnswerSheetIdOrderByPageNumberAsc(answerSheet.getId()).size();
+        if (imageCount == 0) {
+            throw new EdusyncException("EVAL-400", "Cannot complete upload with no pages", HttpStatus.BAD_REQUEST);
+        }
+
+        answerSheet.setStatus(AnswerSheetStatus.COMPLETE);
+        AnswerSheet saved = answerSheetRepository.save(answerSheet);
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("scheduleId", scheduleId);
+        metadata.put("studentId", student.getId());
+        metadata.put("uploadedPages", imageCount);
+        evaluationAuditService.record(EvaluationAuditEventType.ANSWER_SHEET_UPLOAD_COMPLETED, teacher, null, saved, null, metadata);
+        return toImageGroupResponse(saved);
     }
 
     @Override
@@ -596,6 +716,78 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         }
     }
 
+    private void validateImageUpload(MultipartFile file, Integer pageNumber) {
+        if (file == null || file.isEmpty()) {
+            throw new EdusyncException("EVAL-400", "Image file is required", HttpStatus.BAD_REQUEST);
+        }
+        if (pageNumber == null || pageNumber < 1) {
+            throw new EdusyncException("EVAL-400", "pageNumber must be >= 1", HttpStatus.BAD_REQUEST);
+        }
+        if (file.getSize() > maxImageSizeBytes) {
+            throw new EdusyncException("EVAL-400", "Image exceeds configured max size", HttpStatus.BAD_REQUEST);
+        }
+
+        String contentType = file.getContentType();
+        String normalized = contentType == null ? "" : contentType.toLowerCase(Locale.ROOT);
+        if (!ALLOWED_IMAGE_TYPES.contains(normalized)) {
+            throw new EdusyncException("EVAL-400", "Only jpeg/png image uploads are allowed", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private String uploadImageToCloudinary(MultipartFile file, Long answerSheetId, Integer pageNumber) {
+        try {
+            MediaUploadProperties.Cloudinary cfg = mediaUploadProperties.getCloudinary();
+            String folder = cfg.getFolder() != null ? cfg.getFolder() : "answer-sheets";
+            String publicId = folder + "/images/" + answerSheetId + "/page-" + pageNumber + "-" + UUID.randomUUID();
+            Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
+                    "public_id", publicId,
+                    "resource_type", "image",
+                    "overwrite", true
+            ));
+            return (String) uploadResult.get("secure_url");
+        } catch (Exception e) {
+            log.error("Cloudinary image upload failed for answerSheetId={}, page={}", answerSheetId, pageNumber, e);
+            throw new EdusyncException("EVAL-500", "Failed to upload answer sheet image", HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
+
+    private Student getValidatedStudentForSchedule(UUID studentUuid, ExamSchedule schedule) {
+        Student student = studentRepository.findByUuid(studentUuid)
+                .orElseThrow(() -> new EdusyncException("EVAL-404", "Student not found", HttpStatus.NOT_FOUND));
+
+        if (schedule.getSection() != null && !Objects.equals(student.getSection().getId(), schedule.getSection().getId())) {
+            throw new EdusyncException("EVAL-400", "Student does not belong to assigned section", HttpStatus.BAD_REQUEST);
+        }
+        if (schedule.getSection() == null && !Objects.equals(student.getSection().getAcademicClass().getId(), schedule.getAcademicClass().getId())) {
+            throw new EdusyncException("EVAL-400", "Student does not belong to assigned class", HttpStatus.BAD_REQUEST);
+        }
+        return student;
+    }
+
+    private List<Integer> resolvePageNumbers(List<Integer> pageNumbers, int fileCount) {
+        if (pageNumbers == null || pageNumbers.isEmpty()) {
+            List<Integer> generated = new ArrayList<>();
+            for (int i = 1; i <= fileCount; i++) {
+                generated.add(i);
+            }
+            return generated;
+        }
+        if (pageNumbers.size() != fileCount) {
+            throw new EdusyncException("EVAL-400", "pageNumbers count must match files count", HttpStatus.BAD_REQUEST);
+        }
+
+        Set<Integer> uniquePages = new HashSet<>();
+        for (Integer pageNumber : pageNumbers) {
+            if (pageNumber == null || pageNumber < 1) {
+                throw new EdusyncException("EVAL-400", "pageNumbers must be >= 1", HttpStatus.BAD_REQUEST);
+            }
+            if (!uniquePages.add(pageNumber)) {
+                throw new EdusyncException("EVAL-400", "Duplicate pageNumber in upload request", HttpStatus.BAD_REQUEST);
+            }
+        }
+        return pageNumbers;
+    }
+
     private void enforceUploadRateLimit(Long teacherId) {
         long now = System.currentTimeMillis();
         Deque<Long> window = uploadWindow.computeIfAbsent(teacherId, t -> new ArrayDeque<>());
@@ -670,6 +862,37 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .status(assignment.getStatus())
                 .assignedAt(assignment.getAssignedAt())
                 .dueDate(assignment.getDueDate())
+                .build();
+    }
+
+    private TeacherEvaluationStudentResponseDTO toTeacherEvaluationStudentResponse(Student student, AnswerSheet sheet) {
+        String fullName = student.getUserProfile().getFirstName() + " " + student.getUserProfile().getLastName();
+        return TeacherEvaluationStudentResponseDTO.builder()
+                .studentId(student.getUuid())
+                .studentName(fullName.trim())
+                .enrollmentNumber(student.getEnrollmentNumber())
+                .answerSheetId(sheet != null ? sheet.getId() : null)
+                .answerSheetStatus(sheet != null ? sheet.getStatus() : null)
+                .build();
+    }
+
+    private AnswerSheetImageGroupResponseDTO toImageGroupResponse(AnswerSheet answerSheet) {
+        List<AnswerSheetImagePageResponseDTO> pages = answerSheetImageRepository
+                .findByAnswerSheetIdOrderByPageNumberAsc(answerSheet.getId())
+                .stream()
+                .map(image -> AnswerSheetImagePageResponseDTO.builder()
+                        .pageNumber(image.getPageNumber())
+                        .imageUrl(image.getImageUrl())
+                        .build())
+                .collect(Collectors.toList());
+
+        return AnswerSheetImageGroupResponseDTO.builder()
+                .answerSheetId(answerSheet.getId())
+                .studentId(answerSheet.getStudent().getUuid())
+                .examScheduleId(answerSheet.getExamSchedule().getId())
+                .status(answerSheet.getStatus())
+                .updatedAt(answerSheet.getUpdatedAt())
+                .pages(pages)
                 .build();
     }
 

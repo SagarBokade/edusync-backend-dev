@@ -21,7 +21,18 @@ public interface AnswerEvaluationService {
 
     List<TeacherEvaluationStudentResponseDTO> getStudentsForAssignedSchedule(Long scheduleId);
 
+    Page<TeacherEvaluationStudentResponseDTO> getStudentsForAssignedSchedule(Long scheduleId, int page, int size);
+
     AnswerSheetUploadResponseDTO uploadAnswerSheet(Long scheduleId, UUID studentId, MultipartFile file);
+
+    AnswerSheetImageGroupResponseDTO uploadAnswerSheetImages(Long scheduleId,
+                                                             UUID studentId,
+                                                             List<MultipartFile> files,
+                                                             List<Integer> pageNumbers);
+
+    AnswerSheetImageGroupResponseDTO getAnswerSheetImages(UUID studentId, Long scheduleId);
+
+    AnswerSheetImageGroupResponseDTO completeImageUpload(Long scheduleId, UUID studentId);
 
     AnswerEvaluationStructureResponseDTO getEvaluationStructure(Long answerSheetId);
 

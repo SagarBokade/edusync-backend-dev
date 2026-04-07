@@ -31,7 +31,7 @@ public class AnswerSheet extends AuditableEntity {
     @JoinColumn(name = "uploaded_by_teacher_id", nullable = false)
     private Staff uploadedByTeacher;
 
-    @Column(name = "file_url", nullable = false, length = 255)
+    @Column(name = "file_url", length = 1000)
     private String fileUrl;
 
     @Enumerated(EnumType.STRING)
