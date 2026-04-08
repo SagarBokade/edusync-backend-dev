@@ -81,6 +81,12 @@ public class AnswerEvaluationTeacherController {
         return ResponseEntity.ok(answerEvaluationService.completeImageUpload(scheduleId, studentId));
     }
 
+    @PostMapping("/evaluation/{scheduleId}/upload-complete")
+    public ResponseEntity<EvaluationAssignmentResponseDTO> markScheduleUploadComplete(
+            @PathVariable Long scheduleId) {
+        return ResponseEntity.ok(answerEvaluationService.markScheduleUploadComplete(scheduleId));
+    }
+
     @GetMapping("/evaluation/{answerSheetId}/structure")
     public ResponseEntity<AnswerEvaluationStructureResponseDTO> getEvaluationStructure(@PathVariable Long answerSheetId) {
         return ResponseEntity.ok(answerEvaluationService.getEvaluationStructure(answerSheetId));

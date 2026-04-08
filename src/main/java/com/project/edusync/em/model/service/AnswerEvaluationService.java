@@ -49,5 +49,9 @@ public interface AnswerEvaluationService {
     Resource loadSignedAnswerSheet(Long answerSheetId, String token, long expires);
 
     Page<AnswerSheetUploadResponseDTO> getAnswerSheetsForAssignedSchedule(Long scheduleId, int page, int size);
+
+    EvaluationAssignmentResponseDTO markScheduleUploadComplete(Long scheduleId);
+
+    void deleteAssignment(Long assignmentId);
 }
 
