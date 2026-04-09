@@ -4,6 +4,7 @@ import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import com.project.edusync.common.exception.emException.EdusyncException;
 import com.project.edusync.common.security.AuthUtil;
+import com.project.edusync.common.settings.service.AppSettingService;
 import com.project.edusync.em.model.dto.ResponseDTO.AdmitCardEntryResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.AdmitCardGenerationResponseDTO;
 import com.project.edusync.em.model.dto.ResponseDTO.AdmitCardResponseDTO;
@@ -44,6 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -57,12 +59,17 @@ import java.util.stream.Collectors;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 @Transactional
 public class AdmitCardServiceImpl implements AdmitCardService {
+
+    private static final DateTimeFormatter ISSUE_DATE_TIME_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a");
+    private static final Pattern YEAR_PATTERN = Pattern.compile("(\\d{4})");
 
     private final AdmitCardRepository admitCardRepository;
     private final AdmitCardEntryRepository admitCardEntryRepository;
@@ -73,6 +80,7 @@ public class AdmitCardServiceImpl implements AdmitCardService {
     private final PdfGenerationService pdfGenerationService;
     private final AuthUtil authUtil;
     private final MediaUploadProperties mediaUploadProperties;
+    private final AppSettingService appSettingService;
 
     private Cloudinary cloudinary;
 
@@ -502,19 +510,98 @@ public class AdmitCardServiceImpl implements AdmitCardService {
     private byte[] buildAdmitCardPdf(AdmitCard card, List<AdmitCardEntry> entries) {
         Student student = card.getStudent();
         String studentName = (student.getUserProfile().getFirstName() + " " + student.getUserProfile().getLastName()).trim();
+        String className = student.getSection() != null && student.getSection().getAcademicClass() != null
+                ? student.getSection().getAcademicClass().getName()
+                : "N/A";
+        String sectionName = student.getSection() != null ? student.getSection().getSectionName() : "N/A";
+        String examSessionTitle = card.getExam().getName() + " (" + card.getExam().getAcademicYear() + ")";
+        String admitCardNumber = buildAdmitCardNumber(card);
+        String verificationCode = buildVerificationCode(card);
 
         List<AdmitCardEntryResponseDTO> rows = entries.stream()
                 .map(this::toEntryResponse)
                 .collect(Collectors.toList());
 
+        String qrCodeBase64;
+        try {
+            String qrPayload = "admitCardNo=" + admitCardNumber
+                    + "\nexamId=" + card.getExam().getUuid()
+                    + "\nstudentId=" + student.getUuid()
+                    + "\nverifyCode=" + verificationCode;
+            qrCodeBase64 = pdfGenerationService.generateQrCodeBase64(qrPayload, 120);
+        } catch (Exception ex) {
+            log.warn("Failed to generate QR for admit card id={}: {}", card.getId(), ex.getMessage());
+            qrCodeBase64 = "";
+        }
+
+        String studentPhotoBase64 = pdfGenerationService.fetchRemoteImageAsBase64OrEmpty(
+                student.getUserProfile() != null ? student.getUserProfile().getProfileUrl() : null
+        );
+
         Map<String, Object> data = new HashMap<>();
+        populateSchoolBrandingData(data);
+        data.put("examDepartment", appSettingService.getValue("school.exam_department", "Examination Department"));
+        data.put("examSessionTitle", examSessionTitle);
         data.put("examName", card.getExam().getName());
         data.put("examType", card.getExam().getExamType() != null ? card.getExam().getExamType().name() : "N/A");
+        data.put("academicYear", card.getExam().getAcademicYear());
+        data.put("admitCardNumber", admitCardNumber);
+        data.put("verificationCode", verificationCode);
         data.put("studentName", studentName);
+        data.put("rollNumber", student.getRollNo() != null ? student.getRollNo().toString() : "N/A");
         data.put("enrollmentNumber", student.getEnrollmentNumber());
+        data.put("className", className);
+        data.put("sectionName", sectionName);
+        data.put("studentPhotoBase64", studentPhotoBase64);
+        data.put("issueDate", card.getGeneratedAt() != null ? card.getGeneratedAt().format(ISSUE_DATE_TIME_FMT) : "N/A");
         data.put("generatedAt", card.getGeneratedAt());
+        data.put("qrCodeBase64", qrCodeBase64);
+        data.put("controllerTitle", "Controller of Examinations");
+        data.put("principalTitle", "Principal");
         data.put("entries", rows);
         return pdfGenerationService.generatePdfFromHtml("em/admit-card", data);
+    }
+
+    private void populateSchoolBrandingData(Map<String, Object> data) {
+        String schoolName = appSettingService.getValue("school.name", "My School");
+        String shortName = appSettingService.getValue("school.short_name", "");
+        data.put("schoolName", schoolName);
+        data.put("schoolShortName", shortName.isBlank() ? schoolName : shortName);
+        data.put("schoolTagline", appSettingService.getValue("school.tagline", ""));
+        data.put("schoolAddress", appSettingService.getValue("school.address", ""));
+        data.put("schoolPhone", appSettingService.getValue("school.phone", ""));
+        data.put("schoolEmail", appSettingService.getValue("school.email", ""));
+
+        String headerMode = appSettingService.getValue("school.id_card_header_mode", "TEXT");
+        String headerImageUrl = appSettingService.getValue("school.id_card_header_image_url", "");
+        String headerImageBase64 = "";
+        if ("IMAGE".equalsIgnoreCase(headerMode) && !headerImageUrl.isBlank()) {
+            headerImageBase64 = pdfGenerationService.fetchRemoteImageAsBase64OrEmpty(headerImageUrl);
+        }
+        data.put("headerImageEnabled", !headerImageBase64.isBlank());
+        data.put("headerImageBase64", headerImageBase64);
+
+        String logoUrl = appSettingService.getValue("school.logo_url", "");
+        if (!logoUrl.isBlank()) {
+            data.put("schoolLogoBase64", pdfGenerationService.fetchRemoteImageAsBase64(logoUrl));
+        } else {
+            data.put("schoolLogoBase64", pdfGenerationService.loadSchoolLogoBase64());
+        }
+    }
+
+    private String buildAdmitCardNumber(AdmitCard card) {
+        String year = "0000";
+        if (card.getExam() != null && card.getExam().getAcademicYear() != null) {
+            Matcher matcher = YEAR_PATTERN.matcher(card.getExam().getAcademicYear());
+            if (matcher.find()) {
+                year = matcher.group(1);
+            }
+        }
+        return String.format("AC-%s-%06d", year, card.getId());
+    }
+
+    private String buildVerificationCode(AdmitCard card) {
+        return card.getUuid() != null ? card.getUuid().toString() : String.valueOf(card.getId());
     }
 
     private String savePdf(AdmitCard card, byte[] pdfBytes) {
