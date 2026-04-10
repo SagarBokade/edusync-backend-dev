@@ -252,6 +252,18 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     @Transactional
+    public User createSecurityGuard(CreateSecurityGuardRequestDTO request) {
+        log.info("Process started: Hiring Security Guard: {}", request.getUsername());
+
+        Staff staff = createBaseStaff(request);
+
+        log.info("Success: Security Guard created with ID: {}", staff.getId());
+
+        return staff.getUserProfile().getUser();
+    }
+
+    @Override
+    @Transactional
     public User createGuardian(UUID studentId, CreateGuardianRequestDTO request) {
         log.info("Process started: Creating Guardian [{}] for Student UUID: {}", request.getUsername(), studentId);
 
@@ -392,6 +404,13 @@ public class UserManagementServiceImpl implements UserManagementService {
         staff.setUserProfile(profile);
         if (!StringUtils.hasText(staff.getEmployeeId())) {
             staff.setEmployeeId(request.getUsername());
+        }
+        
+        // Manual designation mapping to bypass MapStruct nested creation issues
+        if (request.getDesignationId() != null) {
+            com.project.edusync.hrms.model.entity.StaffDesignation designation = new com.project.edusync.hrms.model.entity.StaffDesignation();
+            designation.setId(request.getDesignationId());
+            staff.setDesignation(designation);
         }
 
         // Note: Staff ID is generated here
