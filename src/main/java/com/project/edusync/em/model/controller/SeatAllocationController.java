@@ -7,6 +7,8 @@ import com.project.edusync.em.model.dto.response.SeatAllocationResponseDTO;
 import com.project.edusync.em.model.dto.response.SeatAvailabilityDTO;
 import com.project.edusync.em.model.service.SeatAllocationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -50,6 +52,15 @@ public class SeatAllocationController {
     public ResponseEntity<List<SeatAllocationResponseDTO>> getAllocationsForSchedule(
             @PathVariable Long examScheduleId) {
         return ResponseEntity.ok(seatAllocationService.getAllocationsForSchedule(examScheduleId));
+    }
+
+    @GetMapping("/schedule/{examScheduleId}/print")
+    public ResponseEntity<byte[]> printAllocationsForSchedule(@PathVariable Long examScheduleId) {
+        byte[] pdf = seatAllocationService.generateSeatingPlanPdf(examScheduleId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=seating-plan-" + examScheduleId + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
     }
 
     @GetMapping("/roll/{rollNo}")

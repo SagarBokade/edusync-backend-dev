@@ -28,6 +28,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
             JOIN FETCH a.examSchedule es
             JOIN FETCH es.exam ex
             JOIN FETCH es.subject sub
+            JOIN FETCH es.academicClass ac
             LEFT JOIN FETCH er.approvedBy ab
             WHERE er.status = :status
             ORDER BY COALESCE(er.submittedAt, er.createdAt) ASC
@@ -42,6 +43,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
             JOIN FETCH a.examSchedule es
             JOIN FETCH es.exam ex
             JOIN FETCH es.subject sub
+            JOIN FETCH es.academicClass ac
             LEFT JOIN FETCH er.approvedBy ab
             ORDER BY er.createdAt DESC
             """)
@@ -55,6 +57,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
             JOIN FETCH a.examSchedule es
             JOIN FETCH es.exam ex
             JOIN FETCH es.subject sub
+            JOIN FETCH es.academicClass ac
             LEFT JOIN FETCH er.approvedBy ab
             WHERE er.id = :resultId
             """)
@@ -68,6 +71,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
             JOIN FETCH a.examSchedule es
             JOIN FETCH es.exam ex
             JOIN FETCH es.subject sub
+            JOIN FETCH es.academicClass ac
             LEFT JOIN FETCH er.approvedBy ab
             WHERE st.id = :studentId
               AND er.status = :status
@@ -84,6 +88,7 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
             JOIN FETCH a.examSchedule es
             JOIN FETCH es.exam ex
             JOIN FETCH es.subject sub
+            JOIN FETCH es.academicClass ac
             LEFT JOIN FETCH er.approvedBy ab
             WHERE er.id = :resultId
               AND st.id = :studentId
@@ -92,5 +97,15 @@ public interface EvaluationResultRepository extends JpaRepository<EvaluationResu
     Optional<EvaluationResult> findByIdAndStudentIdAndStatusWithContext(@Param("resultId") Long resultId,
                                                                          @Param("studentId") Long studentId,
                                                                          @Param("status") EvaluationResultStatus status);
+
+    @Query("""
+            SELECT er FROM EvaluationResult er
+            JOIN FETCH er.answerSheet a
+            JOIN FETCH a.examSchedule es
+            WHERE er.id IN :resultIds
+              AND er.status = :status
+            """)
+    List<EvaluationResult> findAllByIdInAndStatusWithContext(@Param("resultIds") List<Long> resultIds,
+                                                             @Param("status") EvaluationResultStatus status);
 }
 

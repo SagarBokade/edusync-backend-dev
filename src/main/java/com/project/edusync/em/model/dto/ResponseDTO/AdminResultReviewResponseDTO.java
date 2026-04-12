@@ -20,7 +20,10 @@ public class AdminResultReviewResponseDTO {
     private UUID studentId;
     private String studentName;
     private String enrollmentNumber;
+    private UUID examId;
     private String examName;
+    private UUID classId;
+    private String className;
     private String subjectName;
     private BigDecimal totalMarks;
     private String status;
