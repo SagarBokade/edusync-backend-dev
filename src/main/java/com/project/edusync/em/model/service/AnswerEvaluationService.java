@@ -49,6 +49,13 @@ public interface AnswerEvaluationService {
 
     EvaluationResultResponseDTO publishResult(Long resultId);
 
+    int publishResultsBulk(List<Long> resultIds);
+
+    ClassResultSummaryResponseDTO getClassResultSummary(java.util.UUID classId, java.util.UUID examId);
+    int approveClassResults(java.util.UUID classId, java.util.UUID examId);
+    int publishClassResults(java.util.UUID classId, java.util.UUID examId);
+    void markStudentAbsent(Long scheduleId, Long studentId, boolean isAbsent);
+
     List<StudentResultResponseDTO> getStudentPublishedResults();
 
     StudentResultDetailResponseDTO getStudentPublishedResult(Long resultId);

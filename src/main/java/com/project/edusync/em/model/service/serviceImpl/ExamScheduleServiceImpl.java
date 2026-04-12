@@ -65,15 +65,6 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
         Exam exam = examRepository.findByUuid(examUuid)
                 .orElseThrow(() -> new ExamNotFoundException(examUuid));
 
-        // First schedule binds the exam-level template; subsequent schedules must use the same template.
-        if (exam.getTemplate() == null) {
-            ExamTemplate selectedTemplate = examTemplateRepository.findByUuid(requestDTO.getTemplateId())
-                    .orElseThrow(() -> new EdusyncException("EM-404", "Exam template not found", HttpStatus.NOT_FOUND));
-            exam.setTemplate(selectedTemplate);
-        } else if (!exam.getTemplate().getUuid().equals(requestDTO.getTemplateId())) {
-            throw new EdusyncException("EM-400", "templateId must match the selected exam template", HttpStatus.BAD_REQUEST);
-        }
-
         validateRequest(requestDTO);
 
         ExamSchedule schedule = new ExamSchedule();
@@ -92,13 +83,6 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
         ExamSchedule schedule = examScheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new EdusyncException("EM-404", "Exam Schedule not found", HttpStatus.NOT_FOUND));
 
-        if (schedule.getExam().getTemplate() == null) {
-            ExamTemplate selectedTemplate = examTemplateRepository.findByUuid(requestDTO.getTemplateId())
-                    .orElseThrow(() -> new EdusyncException("EM-404", "Exam template not found", HttpStatus.NOT_FOUND));
-            schedule.getExam().setTemplate(selectedTemplate);
-        } else if (!schedule.getExam().getTemplate().getUuid().equals(requestDTO.getTemplateId())) {
-            throw new EdusyncException("EM-400", "templateId must match the selected exam template", HttpStatus.BAD_REQUEST);
-        }
 
         validateRequest(requestDTO);
         mapDtoToEntity(requestDTO, schedule);
@@ -258,12 +242,17 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
         int maxStudentsPerSeat = dto.getMaxStudentsPerSeat() != null ? dto.getMaxStudentsPerSeat() : 1;
         entity.setMaxStudentsPerSeat(maxStudentsPerSeat);
         entity.setSeatSide(maxStudentsPerSeat == 2 ? dto.getSeatSide() : null);
+
+        long activeStudents = entity.getSection() != null
+                ? studentRepository.countBySection_IdAndIsActiveTrue(entity.getSection().getId())
+                : studentRepository.countBySection_AcademicClass_IdAndIsActiveTrue(entity.getAcademicClass().getId());
+        entity.setActiveStudentCount(Math.toIntExact(activeStudents));
     }
 
     private ExamScheduleResponseDTO mapEntityToResponse(ExamSchedule entity) {
-        long totalStudents = entity.getSection() != null
-                ? studentRepository.countBySectionId(entity.getSection().getId())
-                : studentRepository.countBySection_AcademicClass_Id(entity.getAcademicClass().getId());
+        long totalStudents = entity.getActiveStudentCount() != null
+                ? entity.getActiveStudentCount()
+                : 0;
 
         return ExamScheduleResponseDTO.builder()
                 .scheduleId(entity.getId())

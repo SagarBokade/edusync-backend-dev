@@ -5,6 +5,7 @@ import com.project.edusync.adm.model.entity.Room;
 import com.project.edusync.adm.repository.RoomRepository;
 import com.project.edusync.common.config.CacheNames;
 import com.project.edusync.common.exception.BadRequestException;
+import com.project.edusync.common.settings.service.AppSettingService;
 import com.project.edusync.em.model.dto.request.BulkSeatAllocationRequestDTO;
 import com.project.edusync.em.model.dto.request.SingleSeatAllocationRequestDTO;
 import com.project.edusync.em.model.dto.response.RoomAvailabilityDTO;
@@ -18,6 +19,7 @@ import com.project.edusync.em.model.enums.SeatSide;
 import com.project.edusync.em.model.repository.ExamScheduleRepository;
 import com.project.edusync.em.model.repository.SeatAllocationRepository;
 import com.project.edusync.em.model.repository.SeatRepository;
+import com.project.edusync.finance.service.PdfGenerationService;
 import com.project.edusync.uis.model.entity.Student;
 import com.project.edusync.uis.repository.StudentRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.format.DateTimeFormatter;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,6 +44,8 @@ public class SeatAllocationService {
     private final ExamScheduleRepository examScheduleRepository;
     private final RoomRepository roomRepository;
     private final StudentRepository studentRepository;
+    private final PdfGenerationService pdfGenerationService;
+    private final AppSettingService appSettingService;
 
     private static final int BATCH_SIZE = 50;
 
@@ -440,6 +445,29 @@ public class SeatAllocationService {
     }
 
     @Transactional(readOnly = true)
+    public byte[] generateSeatingPlanPdf(Long examScheduleId) {
+        ExamSchedule schedule = fetchSchedule(examScheduleId);
+        List<SeatAllocationResponseDTO> allocations = getAllocationsForSchedule(examScheduleId);
+
+        Map<String, Object> data = new HashMap<>();
+        populateSchoolBrandingData(data);
+
+        data.put("title", "Seating Plan");
+        data.put("examName", schedule.getExam().getName());
+        data.put("subjectName", schedule.getSubject().getName());
+        data.put("className", schedule.getAcademicClass() != null ? schedule.getAcademicClass().getName() : "-");
+        data.put("sectionName", schedule.getSection() != null ? schedule.getSection().getSectionName() : "All Sections");
+        data.put("examDate", schedule.getExamDate() != null ? schedule.getExamDate().toString() : "-");
+        data.put("startTime", schedule.getTimeslot() != null ? String.valueOf(schedule.getTimeslot().getStartTime()) : "-");
+        data.put("endTime", schedule.getTimeslot() != null ? String.valueOf(schedule.getTimeslot().getEndTime()) : "-");
+        data.put("generatedAt", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")));
+        data.put("totalAssigned", allocations.size());
+        data.put("rows", allocations);
+
+        return pdfGenerationService.generatePdfFromHtml("em/seating-plan", data);
+    }
+
+    @Transactional(readOnly = true)
     public SeatAllocationResponseDTO findAllocationByRollNumber(Long examScheduleId, Integer rollNo) {
         Student student = studentRepository.findByRollNo(rollNo)
             .orElseThrow(() -> new ResourceNotFoundException("Student not found with roll number: " + rollNo));
@@ -541,5 +569,32 @@ public class SeatAllocationService {
             .startTime(sa.getStartTime())
             .endTime(sa.getEndTime())
             .build();
+    }
+
+    private void populateSchoolBrandingData(Map<String, Object> data) {
+        String schoolName = appSettingService.getValue("school.name", "My School");
+        String shortName = appSettingService.getValue("school.short_name", "");
+        data.put("schoolName", schoolName);
+        data.put("schoolShortName", shortName.isBlank() ? schoolName : shortName);
+        data.put("schoolTagline", appSettingService.getValue("school.tagline", ""));
+        data.put("schoolAddress", appSettingService.getValue("school.address", ""));
+        data.put("schoolPhone", appSettingService.getValue("school.phone", ""));
+        data.put("schoolEmail", appSettingService.getValue("school.email", ""));
+
+        String headerMode = appSettingService.getValue("school.id_card_header_mode", "TEXT");
+        String headerImageUrl = appSettingService.getValue("school.id_card_header_image_url", "");
+        String headerImageBase64 = "";
+        if ("IMAGE".equalsIgnoreCase(headerMode) && !headerImageUrl.isBlank()) {
+            headerImageBase64 = pdfGenerationService.fetchRemoteImageAsBase64OrEmpty(headerImageUrl);
+        }
+        data.put("headerImageEnabled", !headerImageBase64.isBlank());
+        data.put("headerImageBase64", headerImageBase64);
+
+        String logoUrl = appSettingService.getValue("school.logo_url", "");
+        if (!logoUrl.isBlank()) {
+            data.put("schoolLogoBase64", pdfGenerationService.fetchRemoteImageAsBase64(logoUrl));
+        } else {
+            data.put("schoolLogoBase64", pdfGenerationService.loadSchoolLogoBase64());
+        }
     }
 }

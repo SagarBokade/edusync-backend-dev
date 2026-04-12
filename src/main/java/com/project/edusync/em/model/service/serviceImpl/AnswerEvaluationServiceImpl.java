@@ -81,6 +81,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     private final ExamScheduleRepository examScheduleRepository;
     private final StudentRepository studentRepository;
     private final StaffRepository staffRepository;
+    private final StudentExamStatusRepository studentExamStatusRepository;
     private final AuthUtil authUtil;
     private final EvaluationAuditService evaluationAuditService;
     private final EvaluationDraftStoreService evaluationDraftStoreService;
@@ -738,6 +739,178 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     }
 
     @Override
+    public int publishResultsBulk(List<Long> resultIds) {
+        requireAdmin();
+        if (resultIds == null || resultIds.isEmpty()) return 0;
+        
+        List<EvaluationResult> results = evaluationResultRepository.findAllByIdInAndStatusWithContext(resultIds, EvaluationResultStatus.APPROVED);
+        if (results.isEmpty()) return 0;
+
+        LocalDateTime now = LocalDateTime.now();
+        User currentUser = authUtil.getCurrentUser();
+        List<AnswerSheet> updatedAnswerSheets = new ArrayList<>();
+
+        for (EvaluationResult result : results) {
+            result.setStatus(EvaluationResultStatus.PUBLISHED);
+            result.setPublishedAt(now);
+            if (result.getApprovedBy() == null) {
+                result.setApprovedBy(currentUser);
+            }
+            AnswerSheet answerSheet = result.getAnswerSheet();
+            answerSheet.setStatus(AnswerSheetStatus.FINAL);
+            updatedAnswerSheets.add(answerSheet);
+            evaluationDraftStoreService.deleteDraft(answerSheet.getId());
+        }
+
+        List<EvaluationResult> savedResults = evaluationResultRepository.saveAll(results);
+        answerSheetRepository.saveAll(updatedAnswerSheets);
+
+        for (EvaluationResult saved : savedResults) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("resultId", saved.getId());
+            metadata.put("status", saved.getStatus().name());
+            metadata.put("publishedAt", saved.getPublishedAt() != null ? saved.getPublishedAt().toString() : null);
+            metadata.put("bulk", true);
+            evaluationAuditService.record(EvaluationAuditEventType.MARKS_PUBLISHED, null, null, saved.getAnswerSheet(), saved, metadata);
+        }
+        return savedResults.size();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ClassResultSummaryResponseDTO getClassResultSummary(UUID classId, UUID examId) {
+        requireAdmin();
+        
+        List<ExamSchedule> allSchedules = examScheduleRepository.findByExamUuid(examId);
+        List<ExamSchedule> classSchedules = allSchedules.stream()
+            .filter(es -> es.getAcademicClass().getUuid().equals(classId))
+            .collect(Collectors.toList());
+            
+        if (classSchedules.isEmpty()) {
+            throw new EdusyncException("EVAL-404", "No schedules found for class and exam", HttpStatus.NOT_FOUND);
+        }
+        
+        Long internalExamId = classSchedules.get(0).getExam().getId();
+        
+        List<Object[]> counts = examScheduleRepository.countActiveStudentsPerSchedule(internalExamId);
+        long totalStudents = 0;
+        List<Long> classScheduleIds = classSchedules.stream().map(ExamSchedule::getId).collect(Collectors.toList());
+        for (Object[] row : counts) {
+            Long schedId = ((Number) row[0]).longValue();
+            if (classScheduleIds.contains(schedId)) {
+                totalStudents += ((Number) row[1]).longValue();
+            }
+        }
+        
+        long absentStudents = studentExamStatusRepository.countAbsentStudentsByClassAndExam(classId, examId);
+        
+        List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
+             .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
+             .collect(Collectors.toList());
+             
+        long evaluatedStudents = results.stream()
+            .filter(r -> r.getStatus() == EvaluationResultStatus.SUBMITTED || 
+                         r.getStatus() == EvaluationResultStatus.APPROVED || 
+                         r.getStatus() == EvaluationResultStatus.PUBLISHED)
+            .count();
+            
+        long pendingStudents = totalStudents - absentStudents - evaluatedStudents;
+        
+        String status = "INCOMPLETE";
+        if (pendingStudents <= 0) {
+            long publishedCount = results.stream().filter(r -> r.getStatus() == EvaluationResultStatus.PUBLISHED).count();
+            long approvedCount = results.stream().filter(r -> r.getStatus() == EvaluationResultStatus.APPROVED).count();
+            if (publishedCount == evaluatedStudents && evaluatedStudents > 0) {
+                status = "PUBLISHED";
+            } else if (approvedCount + publishedCount == evaluatedStudents && evaluatedStudents > 0) {
+                status = "APPROVED";
+            } else {
+                status = "READY_FOR_APPROVAL";
+            }
+        }
+        
+        return ClassResultSummaryResponseDTO.builder()
+                .classId(classId)
+                .className(classSchedules.get(0).getAcademicClass().getName())
+                .examId(examId)
+                .examName(classSchedules.get(0).getExam().getName())
+                .totalStudents(totalStudents)
+                .evaluatedStudents(evaluatedStudents)
+                .absentStudents(absentStudents)
+                .pendingStudents(Math.max(0, pendingStudents))
+                .status(status)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public int approveClassResults(UUID classId, UUID examId) {
+        requireAdmin();
+        ClassResultSummaryResponseDTO summary = getClassResultSummary(classId, examId);
+        if (summary.getPendingStudents() > 0) {
+            throw new EdusyncException("EVAL-409", "Cannot approve class yet. Still " + summary.getPendingStudents() + " students pending evaluation or absent marking.", HttpStatus.CONFLICT);
+        }
+        
+        List<ExamSchedule> allSchedules = examScheduleRepository.findByExamUuid(examId);
+        List<Long> classScheduleIds = allSchedules.stream()
+            .filter(es -> es.getAcademicClass().getUuid().equals(classId))
+            .map(ExamSchedule::getId)
+            .collect(Collectors.toList());
+            
+        List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
+             .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
+             .filter(r -> r.getStatus() == EvaluationResultStatus.SUBMITTED)
+             .collect(Collectors.toList());
+             
+        User currentUser = authUtil.getCurrentUser();
+        for (EvaluationResult result : results) {
+            result.setStatus(EvaluationResultStatus.APPROVED);
+            result.setApprovedAt(LocalDateTime.now());
+            result.setApprovedBy(currentUser);
+        }
+        evaluationResultRepository.saveAll(results);
+        return results.size();
+    }
+
+    @Override
+    @Transactional
+    public int publishClassResults(UUID classId, UUID examId) {
+        requireAdmin();
+        List<ExamSchedule> allSchedules = examScheduleRepository.findByExamUuid(examId);
+        List<Long> classScheduleIds = allSchedules.stream()
+            .filter(es -> es.getAcademicClass().getUuid().equals(classId))
+            .map(ExamSchedule::getId)
+            .collect(Collectors.toList());
+            
+        List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
+             .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
+             .filter(r -> r.getStatus() == EvaluationResultStatus.APPROVED)
+             .collect(Collectors.toList());
+             
+        if (results.isEmpty()) return 0;
+        
+        List<Long> resultIds = results.stream().map(EvaluationResult::getId).collect(Collectors.toList());
+        return publishResultsBulk(resultIds);
+    }
+
+    @Override
+    @Transactional
+    public void markStudentAbsent(Long scheduleId, Long studentId, boolean isAbsent) {
+        ExamSchedule schedule = getSchedule(scheduleId);
+        Student student = studentRepository.findById(studentId)
+            .orElseThrow(() -> new EdusyncException("EVAL-404", "Student not found", HttpStatus.NOT_FOUND));
+            
+        StudentExamStatus status = studentExamStatusRepository.findByStudentIdAndExamScheduleId(studentId, scheduleId)
+            .orElseGet(() -> StudentExamStatus.builder()
+                .student(student)
+                .examSchedule(schedule)
+                .build());
+                
+        status.setIsAbsent(isAbsent);
+        studentExamStatusRepository.save(status);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<StudentResultResponseDTO> getStudentPublishedResults() {
         Student student = getCurrentStudent();
@@ -1200,7 +1373,10 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .studentId(student.getUuid())
                 .studentName(studentName)
                 .enrollmentNumber(student.getEnrollmentNumber())
+                .examId(schedule.getExam().getUuid())
                 .examName(schedule.getExam().getName())
+                .classId(schedule.getAcademicClass().getUuid())
+                .className(schedule.getAcademicClass().getName())
                 .subjectName(schedule.getSubject().getName())
                 .totalMarks(result.getTotalMarks())
                 .status(result.getStatus().name())
