@@ -27,6 +27,8 @@ import java.net.URI;
 import java.nio.file.FileSystems;
 import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @RequiredArgsConstructor
@@ -38,6 +40,8 @@ public class PdfGenerationService {
             "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
     private final TemplateEngine templateEngine;
+    private final AtomicReference<String> schoolLogoBase64Cache = new AtomicReference<>();
+    private final Map<String, String> remoteImageBase64Cache = new ConcurrentHashMap<>();
 
     /**
      * Generates a PDF from a Thymeleaf template using OpenHTMLtoPDF.
@@ -128,17 +132,26 @@ public class PdfGenerationService {
      * Loads the school logo from the classpath and encodes it in Base64.
      */
     public String loadSchoolLogoBase64() {
+        String cached = schoolLogoBase64Cache.get();
+        if (cached != null) {
+            return cached;
+        }
+
         try {
             ClassPathResource resource = new ClassPathResource("static/images/logo.png");
             if (!resource.exists()) {
                 log.warn("logo.png not found. Using empty string.");
-                return "";
+                schoolLogoBase64Cache.compareAndSet(null, "");
+                return schoolLogoBase64Cache.get();
             }
             byte[] fileContent = resource.getInputStream().readAllBytes();
-            return "data:image/png;base64," + Base64.getEncoder().encodeToString(fileContent);
+            String base64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(fileContent);
+            schoolLogoBase64Cache.compareAndSet(null, base64);
+            return schoolLogoBase64Cache.get();
         } catch (IOException e) {
             log.warn("Could not load logo.png: {}", e.getMessage());
-            return "";
+            schoolLogoBase64Cache.compareAndSet(null, "");
+            return schoolLogoBase64Cache.get();
         }
     }
 
@@ -162,6 +175,13 @@ public class PdfGenerationService {
         if (url == null || url.isBlank()) {
             return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
         }
+
+        String cacheKey = (usePlaceholderOnFailure ? "P:" : "E:") + url;
+        String cached = remoteImageBase64Cache.get(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setConnectTimeout(5000);
@@ -172,23 +192,31 @@ public class PdfGenerationService {
             int status = conn.getResponseCode();
             if (status != 200) {
                 log.warn("Non-200 response ({}) fetching image from: {}", status, url);
-                return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+                String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+                remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
+                return fallback;
             }
 
             try (InputStream is = conn.getInputStream()) {
                 BufferedImage image = ImageIO.read(is);
                 if (image == null) {
                     log.warn("Unsupported image format from {}", url);
-                    return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+                    String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+                    remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
+                    return fallback;
                 }
 
                 ByteArrayOutputStream pngBytes = new ByteArrayOutputStream();
                 ImageIO.write(image, "png", pngBytes);
-                return "data:image/png;base64," + Base64.getEncoder().encodeToString(pngBytes.toByteArray());
+                String base64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(pngBytes.toByteArray());
+                remoteImageBase64Cache.putIfAbsent(cacheKey, base64);
+                return base64;
             }
         } catch (Exception e) {
             log.warn("Failed to fetch profile image from {}: {}", url, e.getMessage());
-            return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+            String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
+            remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
+            return fallback;
         }
     }
 }

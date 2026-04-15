@@ -59,7 +59,8 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Override
     @Caching(evict = {
             @CacheEvict(value = CacheNames.ROOM_AVAILABILITY, allEntries = true),
-            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId")
+            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId"),
+            @CacheEvict(value = CacheNames.SEATING_PLAN_PDF, allEntries = true)
     })
     public ExamScheduleResponseDTO createSchedule(UUID examUuid, ExamScheduleRequestDTO requestDTO) {
         Exam exam = examRepository.findByUuid(examUuid)
@@ -77,7 +78,8 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     @Override
     @Caching(evict = {
             @CacheEvict(value = CacheNames.ROOM_AVAILABILITY, allEntries = true),
-            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId")
+            @CacheEvict(value = CacheNames.EXAM_TEMPLATES, key = "#requestDTO.templateId"),
+            @CacheEvict(value = CacheNames.SEATING_PLAN_PDF, allEntries = true)
     })
     public ExamScheduleResponseDTO updateSchedule(Long scheduleId, ExamScheduleRequestDTO requestDTO) {
         ExamSchedule schedule = examScheduleRepository.findById(scheduleId)
@@ -110,7 +112,7 @@ public class ExamScheduleServiceImpl implements ExamScheduleService {
     }
 
     @Override
-    @CacheEvict(value = {CacheNames.ROOM_AVAILABILITY, CacheNames.SCHEDULE_STUDENTS}, allEntries = true)
+    @CacheEvict(value = {CacheNames.ROOM_AVAILABILITY, CacheNames.SCHEDULE_STUDENTS, CacheNames.SEATING_PLAN_PDF}, allEntries = true)
     public void deleteSchedule(Long scheduleId) {
         if (!examScheduleRepository.existsById(scheduleId)) {
             throw new EdusyncException("EM-404", "Exam Schedule not found", HttpStatus.NOT_FOUND);
