@@ -4,13 +4,16 @@ package com.project.edusync.finance.repository;
 import com.project.edusync.finance.model.entity.Invoice;
 import com.project.edusync.finance.model.enums.InvoiceStatus;
 import com.project.edusync.uis.model.entity.Student;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,6 +30,29 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
      * @return An Optional containing the found Invoice, or empty if not found.
      */
     Optional<Invoice> findByInvoiceNumber(String invoiceNumber);
+
+    /**
+     * Fetches an invoice and immediately acquires a pessimistic write lock
+     * (SELECT ... FOR UPDATE) on the row. This prevents concurrent transactions
+     * from reading stale paidAmount values and overwriting each other's updates.
+     *
+     * @param id The invoice primary key.
+     * @return An Optional containing the locked Invoice, or empty if not found.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM Invoice i WHERE i.id = :id")
+    Optional<Invoice> findByIdWithLock(@Param("id") Long id);
+
+    /**
+     * Checks whether a student already has at least one invoice whose status
+     * is NOT in the supplied exclusion set.  Used to guard against generating
+     * a second "open" invoice for the same student.
+     *
+     * @param student   The Student entity.
+     * @param statuses  Statuses to EXCLUDE from the check (typically CANCELLED).
+     * @return {@code true} if an active invoice already exists.
+     */
+    boolean existsByStudentAndStatusNotIn(Student student, Collection<InvoiceStatus> statuses);
 
     /**
      * Finds all invoices for a specific student.

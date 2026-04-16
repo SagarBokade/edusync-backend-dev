@@ -59,8 +59,13 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentResponseDTO recordOfflinePayment(RecordOfflinePaymentDTO createDTO) {
 
         // 1. Find the related entities
-        Invoice invoice = invoiceRepository.findById(createDTO.getInvoiceId())
+        // ── BUG FIX 2: Use pessimistic write lock to prevent race condition. ──────
+        // Two concurrent payments for the same invoice could both read the same
+        // paidAmount, add their payment, and overwrite each other. The lock ensures
+        // only one transaction can modify the invoice row at a time.
+        Invoice invoice = invoiceRepository.findByIdWithLock(createDTO.getInvoiceId())
                 .orElseThrow(() -> new InvoiceNotFoundException("Invoice not found with invoice ID: " + createDTO.getInvoiceId()));
+        // ────────────────────────────────────────────────────────────────────────
 
         Student student = studentRepository.findById(createDTO.getStudentId())
                 .orElseThrow(() -> new StudentNotFoundException("Student not found with student ID: " + createDTO.getStudentId()));
@@ -246,8 +251,13 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setTransactionId(verifyDTO.getGatewayTransactionId()); // Store the final 'pay_...' ID
         payment.setPaymentDate(LocalDateTime.now()); // Mark the actual time of verification
 
-        // Update parent Invoice
-        Invoice invoice = payment.getInvoice();
+        // ── BUG FIX 2: Reload Invoice with pessimistic lock before updating balance ──
+        // The invoice reference inside `payment` was loaded earlier without a lock.
+        // Re-fetch it now with the write lock to prevent any concurrent payment
+        // from overwriting our balance update.
+        Invoice invoice = invoiceRepository.findByIdWithLock(payment.getInvoice().getId())
+                .orElseThrow(() -> new InvoiceNotFoundException("Invoice not found during payment verification."));
+        // ────────────────────────────────────────────────────────────────────────
         BigDecimal newPaidAmount = invoice.getPaidAmount().add(payment.getAmountPaid());
         invoice.setPaidAmount(newPaidAmount);
 

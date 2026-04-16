@@ -7,6 +7,7 @@ import com.project.edusync.common.exception.finance.StudentNotFoundException;
 import com.project.edusync.finance.dto.invoice.InvoiceResponseDTO;
 import com.project.edusync.finance.mapper.InvoiceMapper;
 import com.project.edusync.finance.model.entity.*;
+import com.project.edusync.finance.model.enums.FineType;
 import com.project.edusync.finance.model.enums.InvoiceStatus;
 import com.project.edusync.finance.model.enums.PaymentStatus;
 import com.project.edusync.finance.repository.*;
@@ -24,8 +25,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,19 +44,33 @@ public class InvoiceServiceImpl implements InvoiceService {
     private final PaymentRepository paymentRepository;
     private final StudentFeeMapRepository studentFeeMapRepository;
     private final FeeParticularRepository feeParticularRepository;
+    private final LateFeeRuleRepository lateFeeRuleRepository;
     private final InvoiceMapper invoiceMapper;
 
     private final PdfGenerationService pdfGenerationService;
     private final NumberToWordsConverter numberToWordsConverter;
-    // We don't need InvoiceLineItemRepository, as it will be saved by cascade.
+    // InvoiceLineItemRepository is not needed — saved by CascadeType.ALL.
 
     @Override
     @Transactional
     public InvoiceResponseDTO generateSingleInvoice(Long studentId) {
+        log.info("Generating invoice for studentId: {}", studentId);
+
         // 1. Find the Student
-        System.out.println("Request Came for ID: " + studentId);
         Student student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new StudentNotFoundException("Student not found with Student ID: " + studentId));
+
+        // ── BUG FIX 1: Duplicate Billing Guard ──────────────────────────────────
+        // Before generating a new invoice, verify the student does NOT already have
+        // an open (non-cancelled, non-paid) invoice. CANCELLED invoices are excluded
+        // so that a replacement can be issued after a cancellation.
+        List<InvoiceStatus> openStatuses = Arrays.asList(InvoiceStatus.CANCELLED, InvoiceStatus.PAID);
+        if (invoiceRepository.existsByStudentAndStatusNotIn(student, openStatuses)) {
+            throw new InvalidPaymentOperationException(
+                    "Student " + studentId + " already has an active invoice. " +
+                    "Cancel the existing invoice before generating a new one.");
+        }
+        // ────────────────────────────────────────────────────────────────────────
 
         // 2. Find the Student's Fee Map
         StudentFeeMap feeMap = studentFeeMapRepository.findByStudent_Id(studentId)
@@ -178,7 +195,11 @@ public class InvoiceServiceImpl implements InvoiceService {
         // Financials
         data.put("lineItems", invoice.getLineItems());
         data.put("totalAmount", invoice.getTotalAmount());
-        data.put("totalInWords", numberToWordsConverter.convertToWords(invoice.getTotalAmount().longValue()));
+        // ── BUG FIX 5: Use HALF_UP rounding to avoid truncating paise. ──────────
+        // Without rounding, ₹1,000.75 would become "One Thousand Rupees Only".
+        long totalRupees = invoice.getTotalAmount().setScale(0, RoundingMode.HALF_UP).longValue();
+        data.put("totalInWords", numberToWordsConverter.convertToWords(totalRupees));
+        // ────────────────────────────────────────────────────────────────────────
 
         // 7. Call the PDF service
         return pdfGenerationService.generatePdfFromHtml("receipt", data);
@@ -231,13 +252,30 @@ public class InvoiceServiceImpl implements InvoiceService {
             throw new InvalidPaymentOperationException("A late fee has already been applied to this invoice.");
         }
 
-        // 2. TODO: Find the applicable LateFeeRule from the repository.
-        // For now, we will use a hardcoded value as discussed.
-        BigDecimal lateFee = new BigDecimal("250.00"); // Hardcoded fee
+        // ── BUG FIX 6: Replace hardcoded ₹250 with DB-driven LateFeeRule ────────
+        // Fetch the first active rule. Throw a meaningful error if none is configured.
+        LateFeeRule rule = lateFeeRuleRepository.findByIsActive(true)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new InvalidPaymentOperationException(
+                        "No active late fee rule is configured. Please create one under Late Fee Policies."));
+
+        BigDecimal lateFee;
+        if (rule.getFineType() == FineType.FIXED) {
+            lateFee = rule.getFineValue();
+        } else {
+            // PERCENTAGE: calculate against the original invoice amount (before late fee)
+            lateFee = invoice.getTotalAmount()
+                    .multiply(rule.getFineValue())
+                    .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        }
+        log.info("Applying late fee of {} (rule: {}, type: {}) to invoice {}",
+                lateFee, rule.getRuleName(), rule.getFineType(), invoiceId);
+        // ────────────────────────────────────────────────────────────────────────
 
         // 3. Create a new line item for the fee
         InvoiceLineItem feeLineItem = new InvoiceLineItem();
-        feeLineItem.setDescription("Late Payment Fee");
+        feeLineItem.setDescription("Late Payment Fee (" + rule.getRuleName() + ")");
         feeLineItem.setAmount(lateFee);
 
         // 4. Add line item and update totals
