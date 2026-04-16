@@ -175,13 +175,6 @@ public class PdfGenerationService {
         if (url == null || url.isBlank()) {
             return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
         }
-
-        String cacheKey = (usePlaceholderOnFailure ? "P:" : "E:") + url;
-        String cached = remoteImageBase64Cache.get(cacheKey);
-        if (cached != null) {
-            return cached;
-        }
-
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setConnectTimeout(5000);
@@ -192,31 +185,23 @@ public class PdfGenerationService {
             int status = conn.getResponseCode();
             if (status != 200) {
                 log.warn("Non-200 response ({}) fetching image from: {}", status, url);
-                String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
-                remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
-                return fallback;
+                return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
             }
 
             try (InputStream is = conn.getInputStream()) {
                 BufferedImage image = ImageIO.read(is);
                 if (image == null) {
                     log.warn("Unsupported image format from {}", url);
-                    String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
-                    remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
-                    return fallback;
+                    return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
                 }
 
                 ByteArrayOutputStream pngBytes = new ByteArrayOutputStream();
                 ImageIO.write(image, "png", pngBytes);
-                String base64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(pngBytes.toByteArray());
-                remoteImageBase64Cache.putIfAbsent(cacheKey, base64);
-                return base64;
+                return "data:image/png;base64," + Base64.getEncoder().encodeToString(pngBytes.toByteArray());
             }
         } catch (Exception e) {
             log.warn("Failed to fetch profile image from {}: {}", url, e.getMessage());
-            String fallback = usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
-            remoteImageBase64Cache.putIfAbsent(cacheKey, fallback);
-            return fallback;
+            return usePlaceholderOnFailure ? PLACEHOLDER_IMAGE_BASE64 : "";
         }
     }
 }
