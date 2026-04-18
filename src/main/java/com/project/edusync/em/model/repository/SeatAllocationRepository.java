@@ -40,6 +40,16 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
         String getClassName();
     }
 
+    interface ExamRoomStudentProjection {
+        Long getStudentId();
+        Integer getRollNo();
+        String getFirstName();
+        String getLastName();
+        String getClassName();
+        Integer getPositionIndex();
+        String getSeatLabel();
+    }
+
     // ── 1. Occupied seat IDs in a room (ANY allocation = occupied) ─────────
     @Query("""
         SELECT DISTINCT sa.seat.id FROM SeatAllocation sa
@@ -390,4 +400,29 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
         @Param("startTime") LocalDateTime startTime,
         @Param("endTime") LocalDateTime endTime,
         @Param("examScheduleId") Long examScheduleId);
+
+    @Query("""
+        SELECT sa.student.id AS studentId,
+               sa.student.rollNo AS rollNo,
+               sa.student.userProfile.firstName AS firstName,
+               sa.student.userProfile.lastName AS lastName,
+               sa.student.section.academicClass.name AS className,
+               sa.positionIndex AS positionIndex,
+               sa.seat.label AS seatLabel
+        FROM SeatAllocation sa
+        WHERE sa.examSchedule.id = :examScheduleId
+          AND sa.seat.room.id = :roomId
+        ORDER BY sa.student.rollNo ASC
+        """)
+    List<ExamRoomStudentProjection> findExamRoomStudents(@Param("examScheduleId") Long examScheduleId,
+                                                         @Param("roomId") Long roomId);
+
+    @Query("""
+        SELECT sa.student.id
+        FROM SeatAllocation sa
+        WHERE sa.examSchedule.id = :examScheduleId
+          AND sa.seat.room.id = :roomId
+        """)
+    List<Long> findExamRoomStudentIds(@Param("examScheduleId") Long examScheduleId,
+                                      @Param("roomId") Long roomId);
 }

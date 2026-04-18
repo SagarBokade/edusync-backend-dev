@@ -8,9 +8,13 @@ import com.project.edusync.ams.model.repository.AbsenceDocumentationRepository;
 import com.project.edusync.ams.model.repository.AttendanceTypeRepository;
 import com.project.edusync.ams.model.repository.StudentDailyAttendanceRepository;
 import com.project.edusync.ams.model.service.AttendanceEditWindowService;
+import com.project.edusync.adm.model.entity.AcademicClass;
+import com.project.edusync.adm.model.entity.Section;
 import com.project.edusync.adm.repository.AcademicClassRepository;
 import com.project.edusync.adm.repository.SectionRepository;
+import com.project.edusync.em.model.repository.ExamScheduleRepository;
 import com.project.edusync.hrms.repository.AcademicCalendarEventRepository;
+import com.project.edusync.uis.model.entity.Student;
 import com.project.edusync.uis.repository.StaffRepository;
 import com.project.edusync.uis.repository.StudentRepository;
 import org.junit.jupiter.api.Test;
@@ -63,6 +67,9 @@ class StudentAttendanceServiceImplTest {
 
     @Mock
     private AcademicCalendarEventRepository academicCalendarEventRepository;
+
+    @Mock
+    private ExamScheduleRepository examScheduleRepository;
 
     @InjectMocks
     private StudentAttendanceServiceImpl service;
@@ -197,6 +204,43 @@ class StudentAttendanceServiceImplTest {
         verify(studentRepo, never()).save(any(StudentDailyAttendance.class));
     }
 
+    @Test
+    void markAttendanceBatch_rejectsWhenExamAttendanceFlowShouldHandleIt() {
+        LocalDate examDate = LocalDate.now();
+        AttendanceType presentType = attendanceType("P");
+
+        when(academicCalendarEventRepository.existsByDateAndDayTypeInAndAppliesToStudentsTrueAndIsActiveTrue(eq(examDate), anyCollection())).thenReturn(false);
+        when(attendanceTypeRepository.findByShortCodeIgnoreCase("P")).thenReturn(Optional.of(presentType));
+
+        Student student = new Student();
+        student.setId(1L);
+        Section section = new Section();
+        section.setId(21L);
+        AcademicClass academicClass = new AcademicClass();
+        academicClass.setId(7L);
+        section.setAcademicClass(academicClass);
+        student.setSection(section);
+
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(examScheduleRepository.existsExamForSectionOrClassOnDate(21L, 7L, examDate)).thenReturn(true);
+
+        StudentAttendanceRequestDTO request = new StudentAttendanceRequestDTO(
+            null,
+            1L,
+            "P",
+            examDate,
+            null,
+            11L,
+            null
+        );
+
+        AttendanceProcessingException ex = assertThrows(AttendanceProcessingException.class,
+            () -> service.markAttendanceBatch(List.of(request), 7L));
+
+        assertEquals("Attendance is handled via exam attendance", ex.getMessage());
+        verify(studentRepo, never()).save(any(StudentDailyAttendance.class));
+    }
+
     private AttendanceType attendanceType(String shortCode) {
         AttendanceType type = new AttendanceType();
         type.setId(1L);
@@ -204,4 +248,3 @@ class StudentAttendanceServiceImplTest {
         return type;
     }
 }
-

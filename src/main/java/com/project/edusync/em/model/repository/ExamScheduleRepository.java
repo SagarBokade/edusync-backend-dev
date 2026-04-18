@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -41,8 +42,8 @@ List<ExamSchedule> findByExamUuid (UUID examUuid);
 		ORDER BY es.examDate ASC
 		""")
 List<ExamSchedule> findUpcomingForSection(@Param("sectionId") Long sectionId,
-										  @Param("fromDate") LocalDate fromDate,
-										  Pageable pageable);
+									  @Param("fromDate") LocalDate fromDate,
+									  Pageable pageable);
 
     boolean existsByAcademicClassAndTimeslotAndExamDate(AcademicClass academicClass, Timeslot timeslot, java.time.LocalDate examDate);
     boolean existsByAcademicClassAndSubjectAndExamDate(AcademicClass academicClass, Subject subject, java.time.LocalDate examDate);
@@ -96,4 +97,24 @@ List<ExamSchedule> findUpcomingForSection(@Param("sectionId") Long sectionId,
 			GROUP BY es.id
 			""")
 	java.util.List<Object[]> countActiveStudentsPerSchedule(@Param("examId") Long examId);
+
+    @Query("""
+            SELECT COUNT(es) > 0
+            FROM ExamSchedule es
+            WHERE es.examDate = :examDate
+              AND (
+                es.section.id = :sectionId
+                OR (es.section IS NULL AND es.academicClass.id = :classId)
+              )
+            """)
+    boolean existsExamForSectionOrClassOnDate(@Param("sectionId") Long sectionId,
+                                              @Param("classId") Long classId,
+                                              @Param("examDate") LocalDate examDate);
+
+    @Query("""
+            SELECT es FROM ExamSchedule es
+            JOIN FETCH es.timeslot ts
+            WHERE es.id = :scheduleId
+            """)
+    Optional<ExamSchedule> findByIdWithTimeslot(@Param("scheduleId") Long scheduleId);
 }
