@@ -15,6 +15,7 @@ public class ExamRoomStudentResponseDTO {
     String subjectName;
     String seatNumber;
     ExamAttendanceStatus attendanceStatus;
+    boolean malpractice;
     boolean finalized;
 
     // Backward-compatible aliases for existing clients.
@@ -31,6 +32,11 @@ public class ExamRoomStudentResponseDTO {
     @JsonProperty("status")
     public ExamAttendanceStatus getStatus() {
         return attendanceStatus;
+    }
+
+    @JsonProperty("malpracticeReported")
+    public boolean isMalpracticeReported() {
+        return malpractice;
     }
 }
 

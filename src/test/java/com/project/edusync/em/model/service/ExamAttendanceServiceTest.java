@@ -346,6 +346,53 @@ class ExamAttendanceServiceTest {
         verify(examAttendanceRepository).saveAll(anyCollection());
     }
 
+    @Test
+    void markAttendance_normalizesLegacyMalpracticeStatusToPresentWithFlag() {
+        when(authUtil.getCurrentUserId()).thenReturn(100L);
+
+        Staff staff = new Staff();
+        staff.setId(55L);
+        when(staffRepository.findByUserProfile_User_Id(100L)).thenReturn(Optional.of(staff));
+        when(staffRepository.findById(55L)).thenReturn(Optional.of(staff));
+        when(invigilationRepository.existsByExamScheduleIdAndRoom_IdAndStaffId(10L, 20L, 55L)).thenReturn(true);
+        when(examScheduleRepository.findByIdWithTimeslot(10L)).thenReturn(Optional.of(buildSchedule(10L, LocalDate.now(), LocalTime.of(9, 0), LocalTime.of(10, 0))));
+        when(seatAllocationRepository.findExamRoomStudentIdsByTimeWindow(eq(20L), any(LocalDateTime.class), any(LocalDateTime.class))).thenReturn(List.of(1L));
+
+        SeatAllocationRepository.RoomStudentScheduleProjection mapProjection = org.mockito.Mockito.mock(SeatAllocationRepository.RoomStudentScheduleProjection.class);
+        when(mapProjection.getStudentId()).thenReturn(1L);
+        when(mapProjection.getExamScheduleId()).thenReturn(10L);
+        when(seatAllocationRepository.findStudentSchedulesInRoomByTimeWindowAndStudentIds(eq(20L), any(LocalDateTime.class), any(LocalDateTime.class), anyCollection()))
+            .thenReturn(List.of(mapProjection));
+
+        when(examAttendanceRepository.existsByExamScheduleIdInAndRoomIdAndFinalizedTrue(anyCollection(), eq(20L))).thenReturn(false);
+        when(examAttendanceRepository.findByExamScheduleIdsAndStudentIds(anyCollection(), anyCollection())).thenReturn(List.of());
+
+        Room room = new Room();
+        room.setId(20L);
+        when(roomRepository.findById(20L)).thenReturn(Optional.of(room));
+
+        Student student = new Student();
+        student.setId(1L);
+        when(studentRepository.findAllById(anyCollection())).thenReturn(List.of(student));
+
+        ExamAttendanceMarkEntryDTO entry = new ExamAttendanceMarkEntryDTO();
+        entry.setStudentId(1L);
+        entry.setStatus(ExamAttendanceStatus.MALPRACTICE);
+
+        ExamAttendanceMarkRequestDTO request = new ExamAttendanceMarkRequestDTO();
+        request.setExamScheduleId(10L);
+        request.setRoomId(20L);
+        request.setAttendances(List.of(entry));
+
+        examAttendanceService.markAttendance(request);
+
+        ArgumentCaptor<Iterable<ExamAttendance>> captor = ArgumentCaptor.forClass(Iterable.class);
+        verify(examAttendanceRepository).saveAll(captor.capture());
+        ExamAttendance saved = captor.getValue().iterator().next();
+        assertEquals(ExamAttendanceStatus.PRESENT, saved.getStatus());
+        assertTrue(saved.isMalpracticeReported());
+    }
+
     private ExamSchedule buildSchedule(Long id, LocalDate date, LocalTime start, LocalTime end) {
         ExamSchedule schedule = new ExamSchedule();
         schedule.setId(id);

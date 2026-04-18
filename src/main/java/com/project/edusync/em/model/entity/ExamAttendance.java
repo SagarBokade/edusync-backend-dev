@@ -45,6 +45,10 @@ public class ExamAttendance {
     @Column(nullable = false, length = 32)
     private ExamAttendanceStatus status;
 
+    @Builder.Default
+    @Column(name = "malpractice_reported", nullable = false)
+    private boolean malpracticeReported = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "marked_by_staff_id")
     private Staff markedBy;

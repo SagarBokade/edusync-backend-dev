@@ -53,6 +53,7 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
         Integer getColumnNumber();
         String getSeatNumber();
         ExamAttendanceStatus getAttendanceStatus();
+        Boolean getMalpractice();
         Boolean getFinalized();
     }
 
@@ -424,6 +425,7 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
                sa.seat.columnNumber AS columnNumber,
                sa.seat.label AS seatNumber,
                ea.status AS attendanceStatus,
+               ea.malpracticeReported AS malpractice,
                ea.finalized AS finalized
         FROM SeatAllocation sa
         LEFT JOIN ExamAttendance ea

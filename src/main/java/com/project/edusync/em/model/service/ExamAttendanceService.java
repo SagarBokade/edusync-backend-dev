@@ -79,7 +79,8 @@ public class ExamAttendanceService {
                 .className(s.getClassName())
                 .subjectName(s.getSubjectName())
                 .seatNumber(resolveSeatNumber(s.getSeatNumber(), s.getRowNumber(), s.getColumnNumber()))
-                .attendanceStatus(s.getAttendanceStatus())
+                .attendanceStatus(normalizeStoredStatus(s.getAttendanceStatus()))
+                .malpractice(Boolean.TRUE.equals(s.getMalpractice()) || s.getAttendanceStatus() == ExamAttendanceStatus.MALPRACTICE)
                 .finalized(Boolean.TRUE.equals(s.getFinalized()))
                 .build())
             .toList();
@@ -158,7 +159,13 @@ public class ExamAttendanceService {
                     .room(room)
                     .build();
             }
-            attendance.setStatus(entry.getStatus());
+            ExamAttendanceStatus normalizedStatus = normalizeRequestedStatus(entry);
+            boolean malpractice = normalizeMalpractice(entry);
+            if (malpractice && normalizedStatus == ExamAttendanceStatus.ABSENT) {
+                throw new BadRequestException("Malpractice can only be marked for present students");
+            }
+            attendance.setStatus(normalizedStatus);
+            attendance.setMalpracticeReported(malpractice);
             attendance.setMarkedBy(marker);
             attendance.setTimestamp(LocalDateTime.now());
             attendance.setFinalized(false);
@@ -246,6 +253,7 @@ public class ExamAttendanceService {
                     .student(student)
                     .room(room)
                     .status(ExamAttendanceStatus.ABSENT)
+                    .malpracticeReported(false)
                     .markedBy(marker)
                     .timestamp(LocalDateTime.now())
                     .finalized(true)
@@ -326,6 +334,25 @@ public class ExamAttendanceService {
 
     private String attendanceKey(Long examScheduleId, Long studentId) {
         return examScheduleId + ":" + studentId;
+    }
+
+    private ExamAttendanceStatus normalizeRequestedStatus(ExamAttendanceMarkEntryDTO entry) {
+        if (entry.getStatus() == ExamAttendanceStatus.MALPRACTICE) {
+            // Legacy payload compatibility: status=MALPRACTICE implies present with malpractice flag.
+            return ExamAttendanceStatus.PRESENT;
+        }
+        return entry.getStatus();
+    }
+
+    private boolean normalizeMalpractice(ExamAttendanceMarkEntryDTO entry) {
+        return Boolean.TRUE.equals(entry.getMalpractice()) || entry.getStatus() == ExamAttendanceStatus.MALPRACTICE;
+    }
+
+    private ExamAttendanceStatus normalizeStoredStatus(ExamAttendanceStatus status) {
+        if (status == ExamAttendanceStatus.MALPRACTICE) {
+            return ExamAttendanceStatus.PRESENT;
+        }
+        return status;
     }
 
     private String buildName(String firstName, String lastName) {
