@@ -1,5 +1,8 @@
 package com.project.edusync.em.model.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -18,6 +21,18 @@ public class ExamAttendanceMarkRequestDTO {
 
     @Valid
     @NotEmpty
-    private List<ExamAttendanceMarkEntryDTO> entries;
+    @JsonProperty("attendances")
+    @JsonAlias("entries")
+    private List<ExamAttendanceMarkEntryDTO> attendances;
+
+    @JsonIgnore
+    public List<ExamAttendanceMarkEntryDTO> getEntries() {
+        return attendances;
+    }
+
+    @JsonIgnore
+    public void setEntries(List<ExamAttendanceMarkEntryDTO> entries) {
+        this.attendances = entries;
+    }
 }
 

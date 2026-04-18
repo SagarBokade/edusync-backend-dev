@@ -66,26 +66,22 @@ public class ExamAttendanceService {
         Long staffId = resolveCurrentStaffId();
         validateInvigilatorAssignment(staffId, examScheduleId, roomId);
 
-        Map<Long, ExamAttendance> existingAttendance = examAttendanceRepository
-            .findByExamScheduleIdAndRoomIdWithStudent(examScheduleId, roomId)
-            .stream()
-            .collect(Collectors.toMap(e -> e.getStudent().getId(), Function.identity(), (a, b) -> a));
+        ExamSchedule schedule = findScheduleWithTimeslot(examScheduleId);
+        LocalDateTime slotStart = toScheduleStart(schedule);
+        LocalDateTime slotEnd = toScheduleEnd(schedule);
 
-        return seatAllocationRepository.findExamRoomStudents(examScheduleId, roomId)
+        return seatAllocationRepository.findExamRoomStudentsByTimeWindow(roomId, slotStart, slotEnd)
             .stream()
-            .map(s -> {
-                ExamAttendance existing = existingAttendance.get(s.getStudentId());
-                return ExamRoomStudentResponseDTO.builder()
-                    .studentId(s.getStudentId())
-                    .rollNo(s.getRollNo())
-                    .name(buildName(s.getFirstName(), s.getLastName()))
-                    .className(s.getClassName())
-                    .seatPosition(toSeatPositionLabel(s.getPositionIndex()))
-                    .seatLabel(s.getSeatLabel())
-                    .status(existing == null ? null : existing.getStatus())
-                    .finalized(existing != null && existing.isFinalized())
-                    .build();
-            })
+            .map(s -> ExamRoomStudentResponseDTO.builder()
+                .studentId(s.getStudentId())
+                .studentName(buildName(s.getFirstName(), s.getLastName()))
+                .rollNo(s.getRollNo())
+                .className(s.getClassName())
+                .subjectName(s.getSubjectName())
+                .seatNumber(resolveSeatNumber(s.getSeatNumber(), s.getRowNumber(), s.getColumnNumber()))
+                .attendanceStatus(s.getAttendanceStatus())
+                .finalized(Boolean.TRUE.equals(s.getFinalized()))
+                .build())
             .toList();
     }
 
@@ -93,56 +89,74 @@ public class ExamAttendanceService {
     public ExamAttendanceMarkResponseDTO markAttendance(ExamAttendanceMarkRequestDTO request) {
         Long staffId = resolveCurrentStaffId();
         validateInvigilatorAssignment(staffId, request.getExamScheduleId(), request.getRoomId());
-        ensureNotFinalized(request.getExamScheduleId(), request.getRoomId());
+        ExamSchedule anchorSchedule = findScheduleWithTimeslot(request.getExamScheduleId());
+        LocalDateTime slotStart = toScheduleStart(anchorSchedule);
+        LocalDateTime slotEnd = toScheduleEnd(anchorSchedule);
 
-        Set<Long> roomStudentIds = new HashSet<>(seatAllocationRepository.findExamRoomStudentIds(request.getExamScheduleId(), request.getRoomId()));
+        Set<Long> roomStudentIds = new HashSet<>(seatAllocationRepository
+            .findExamRoomStudentIdsByTimeWindow(request.getRoomId(), slotStart, slotEnd));
         if (roomStudentIds.isEmpty()) {
             throw new BadRequestException("No seat allocations found for this room and exam schedule");
         }
 
-        Set<Long> requestedStudentIds = request.getEntries().stream().map(ExamAttendanceMarkEntryDTO::getStudentId).collect(Collectors.toSet());
-        if (requestedStudentIds.size() != request.getEntries().size()) {
+        Set<Long> requestedStudentIds = request.getAttendances().stream().map(ExamAttendanceMarkEntryDTO::getStudentId).collect(Collectors.toSet());
+        if (requestedStudentIds.size() != request.getAttendances().size()) {
             throw new BadRequestException("Duplicate student entries are not allowed in one mark request");
         }
         if (!roomStudentIds.containsAll(requestedStudentIds)) {
             throw new BadRequestException("One or more students are not allocated in this exam room");
         }
 
-        Map<Long, ExamAttendance> existingByStudentId = examAttendanceRepository
-            .findByExamScheduleIdAndStudentIds(request.getExamScheduleId(), requestedStudentIds)
-            .stream()
-            .collect(Collectors.toMap(e -> e.getStudent().getId(), Function.identity(), (a, b) -> a));
+        Map<Long, Long> scheduleByStudent = resolveScheduleByStudent(request.getRoomId(), slotStart, slotEnd, requestedStudentIds);
+        Set<Long> scheduleIds = new HashSet<>(scheduleByStudent.values());
+        ensureNotFinalized(scheduleIds, request.getRoomId());
 
-        ExamSchedule schedule = examScheduleRepository.findById(request.getExamScheduleId())
-            .orElseThrow(() -> new ResourceNotFoundException("ExamSchedule", "id", request.getExamScheduleId()));
+        Map<String, ExamAttendance> existingByStudentId = examAttendanceRepository
+            .findByExamScheduleIdsAndStudentIds(scheduleIds, requestedStudentIds)
+            .stream()
+            .collect(Collectors.toMap(
+                e -> attendanceKey(e.getExamSchedule().getId(), e.getStudent().getId()),
+                Function.identity(),
+                (a, b) -> a));
+
+        Map<Long, ExamSchedule> schedulesById = examScheduleRepository.findAllById(scheduleIds).stream()
+            .collect(Collectors.toMap(ExamSchedule::getId, Function.identity()));
+        if (schedulesById.size() != scheduleIds.size()) {
+            throw new BadRequestException("Seat allocations reference missing exam schedules");
+        }
         Room room = roomRepository.findById(request.getRoomId())
             .orElseThrow(() -> new ResourceNotFoundException("Room", "id", request.getRoomId()));
         Staff marker = staffRepository.findById(staffId)
             .orElseThrow(() -> new ResourceNotFoundException("Staff", "id", staffId));
 
-        Set<Long> missingStudents = new HashSet<>(requestedStudentIds);
-        missingStudents.removeAll(existingByStudentId.keySet());
-        Map<Long, Student> missingStudentEntities = missingStudents.isEmpty()
-            ? Collections.emptyMap()
-            : studentRepository.findAllById(missingStudents).stream()
+        Map<Long, Student> studentEntities = studentRepository.findAllById(requestedStudentIds).stream()
                 .collect(Collectors.toMap(Student::getId, Function.identity()));
 
-        List<ExamAttendance> toSave = new ArrayList<>();
-        for (ExamAttendanceMarkEntryDTO entry : request.getEntries()) {
-            ExamAttendance attendance = existingByStudentId.get(entry.getStudentId());
+        List<ExamAttendance> toSave = new ArrayList<>(request.getAttendances().size());
+        for (ExamAttendanceMarkEntryDTO entry : request.getAttendances()) {
+            Long scheduleId = scheduleByStudent.get(entry.getStudentId());
+            if (scheduleId == null) {
+                throw new BadRequestException("One or more students are not allocated in this exam room");
+            }
+            String key = attendanceKey(scheduleId, entry.getStudentId());
+            ExamAttendance attendance = existingByStudentId.get(key);
+            if (attendance != null && !Objects.equals(attendance.getRoom().getId(), request.getRoomId())) {
+                throw new BadRequestException("Inconsistent attendance data found for this room");
+            }
             if (attendance == null) {
-                Student student = missingStudentEntities.get(entry.getStudentId());
+                Student student = studentEntities.get(entry.getStudentId());
                 if (student == null) {
                     throw new ResourceNotFoundException("Student", "id", entry.getStudentId());
                 }
+                ExamSchedule mappedSchedule = schedulesById.get(scheduleId);
+                if (mappedSchedule == null) {
+                    throw new ResourceNotFoundException("ExamSchedule", "id", scheduleId);
+                }
                 attendance = ExamAttendance.builder()
-                    .examSchedule(schedule)
+                    .examSchedule(mappedSchedule)
                     .student(student)
                     .room(room)
                     .build();
-            }
-            if (attendance.isFinalized()) {
-                throw new BadRequestException("Attendance is already finalized for this room");
             }
             attendance.setStatus(entry.getStatus());
             attendance.setMarkedBy(marker);
@@ -163,51 +177,72 @@ public class ExamAttendanceService {
     public ExamAttendanceFinalizeResponseDTO finalizeAttendance(ExamAttendanceFinalizeRequestDTO request) {
         Long staffId = resolveCurrentStaffId();
         validateInvigilatorAssignment(staffId, request.getExamScheduleId(), request.getRoomId());
-        ensureNotFinalized(request.getExamScheduleId(), request.getRoomId());
 
-        ExamSchedule schedule = examScheduleRepository.findByIdWithTimeslot(request.getExamScheduleId())
-            .orElseThrow(() -> new ResourceNotFoundException("ExamSchedule", "id", request.getExamScheduleId()));
+        ExamSchedule schedule = findScheduleWithTimeslot(request.getExamScheduleId());
+        LocalDateTime slotStart = toScheduleStart(schedule);
+        LocalDateTime slotEnd = toScheduleEnd(schedule);
 
-        LocalDateTime examEndTime = LocalDateTime.of(schedule.getExamDate(), schedule.getTimeslot().getEndTime());
-        if (LocalDateTime.now().isBefore(examEndTime)) {
+        if (LocalDateTime.now().isBefore(slotEnd)) {
             throw new BadRequestException("Attendance can be finalized only after exam end time");
         }
 
-        List<Long> roomStudentIds = seatAllocationRepository.findExamRoomStudentIds(request.getExamScheduleId(), request.getRoomId());
+        List<Long> roomStudentIds = seatAllocationRepository.findExamRoomStudentIdsByTimeWindow(request.getRoomId(), slotStart, slotEnd);
         if (roomStudentIds.isEmpty()) {
             throw new BadRequestException("No seat allocations found for this room and exam schedule");
         }
 
-        Map<Long, ExamAttendance> existingByStudentId = examAttendanceRepository
-            .findByExamScheduleIdAndStudentIds(request.getExamScheduleId(), roomStudentIds)
+        Map<Long, Long> scheduleByStudent = resolveScheduleByStudent(request.getRoomId(), slotStart, slotEnd, new HashSet<>(roomStudentIds));
+        Set<Long> scheduleIds = new HashSet<>(scheduleByStudent.values());
+        ensureNotFinalized(scheduleIds, request.getRoomId());
+
+        Map<String, ExamAttendance> existingByStudentId = examAttendanceRepository
+            .findByExamScheduleIdsAndStudentIds(scheduleIds, roomStudentIds)
             .stream()
-            .collect(Collectors.toMap(e -> e.getStudent().getId(), Function.identity(), (a, b) -> a));
+            .collect(Collectors.toMap(
+                e -> attendanceKey(e.getExamSchedule().getId(), e.getStudent().getId()),
+                Function.identity(),
+                (a, b) -> a));
 
         Staff marker = staffRepository.findById(staffId)
             .orElseThrow(() -> new ResourceNotFoundException("Staff", "id", staffId));
         Room room = roomRepository.findById(request.getRoomId())
             .orElseThrow(() -> new ResourceNotFoundException("Room", "id", request.getRoomId()));
 
+        Map<Long, ExamSchedule> schedulesById = examScheduleRepository.findAllById(scheduleIds).stream()
+            .collect(Collectors.toMap(ExamSchedule::getId, Function.identity()));
+        if (schedulesById.size() != scheduleIds.size()) {
+            throw new BadRequestException("Seat allocations reference missing exam schedules");
+        }
+
         List<ExamAttendance> toSave = new ArrayList<>(roomStudentIds.size());
         int alreadyMarked = 0;
         int autoMarkedAbsent = 0;
 
         Set<Long> missingStudentIds = new HashSet<>(roomStudentIds);
-        missingStudentIds.removeAll(existingByStudentId.keySet());
+        missingStudentIds.removeAll(existingByStudentId.values().stream().map(e -> e.getStudent().getId()).collect(Collectors.toSet()));
         Map<Long, Student> missingStudents = missingStudentIds.isEmpty()
             ? Collections.emptyMap()
             : studentRepository.findAllById(missingStudentIds).stream()
                 .collect(Collectors.toMap(Student::getId, Function.identity()));
 
         for (Long studentId : roomStudentIds) {
-            ExamAttendance attendance = existingByStudentId.get(studentId);
+            Long scheduleId = scheduleByStudent.get(studentId);
+            if (scheduleId == null) {
+                throw new BadRequestException("One or more students are not allocated in this exam room");
+            }
+            String key = attendanceKey(scheduleId, studentId);
+            ExamAttendance attendance = existingByStudentId.get(key);
             if (attendance == null) {
                 Student student = missingStudents.get(studentId);
                 if (student == null) {
                     throw new ResourceNotFoundException("Student", "id", studentId);
                 }
+                ExamSchedule mappedSchedule = schedulesById.get(scheduleId);
+                if (mappedSchedule == null) {
+                    throw new ResourceNotFoundException("ExamSchedule", "id", scheduleId);
+                }
                 attendance = ExamAttendance.builder()
-                    .examSchedule(schedule)
+                    .examSchedule(mappedSchedule)
                     .student(student)
                     .room(room)
                     .status(ExamAttendanceStatus.ABSENT)
@@ -246,10 +281,51 @@ public class ExamAttendanceService {
         }
     }
 
-    private void ensureNotFinalized(Long examScheduleId, Long roomId) {
-        if (examAttendanceRepository.existsByExamScheduleIdAndRoomIdAndFinalizedTrue(examScheduleId, roomId)) {
+    private void ensureNotFinalized(Set<Long> examScheduleIds, Long roomId) {
+        if (examScheduleIds.isEmpty()) {
+            return;
+        }
+        if (examAttendanceRepository.existsByExamScheduleIdInAndRoomIdAndFinalizedTrue(examScheduleIds, roomId)) {
             throw new BadRequestException("Attendance already finalized for this room");
         }
+    }
+
+    private Map<Long, Long> resolveScheduleByStudent(Long roomId,
+                                                     LocalDateTime slotStart,
+                                                     LocalDateTime slotEnd,
+                                                     Set<Long> studentIds) {
+        if (studentIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return seatAllocationRepository
+            .findStudentSchedulesInRoomByTimeWindowAndStudentIds(roomId, slotStart, slotEnd, studentIds)
+            .stream()
+            .collect(Collectors.toMap(
+                SeatAllocationRepository.RoomStudentScheduleProjection::getStudentId,
+                SeatAllocationRepository.RoomStudentScheduleProjection::getExamScheduleId,
+                (left, right) -> {
+                    if (Objects.equals(left, right)) {
+                        return left;
+                    }
+                    throw new BadRequestException("Student has multiple schedule allocations in the same room and time window");
+                }));
+    }
+
+    private ExamSchedule findScheduleWithTimeslot(Long examScheduleId) {
+        return examScheduleRepository.findByIdWithTimeslot(examScheduleId)
+            .orElseThrow(() -> new ResourceNotFoundException("ExamSchedule", "id", examScheduleId));
+    }
+
+    private LocalDateTime toScheduleStart(ExamSchedule schedule) {
+        return LocalDateTime.of(schedule.getExamDate(), schedule.getTimeslot().getStartTime());
+    }
+
+    private LocalDateTime toScheduleEnd(ExamSchedule schedule) {
+        return LocalDateTime.of(schedule.getExamDate(), schedule.getTimeslot().getEndTime());
+    }
+
+    private String attendanceKey(Long examScheduleId, Long studentId) {
+        return examScheduleId + ":" + studentId;
     }
 
     private String buildName(String firstName, String lastName) {
@@ -258,16 +334,14 @@ public class ExamAttendanceService {
         return (left + " " + right).trim();
     }
 
-    private String toSeatPositionLabel(Integer positionIndex) {
-        if (positionIndex == null) {
+    private String resolveSeatNumber(String seatNumber, Integer rowNumber, Integer columnNumber) {
+        if (seatNumber != null && !seatNumber.isBlank()) {
+            return seatNumber;
+        }
+        if (rowNumber == null || columnNumber == null) {
             return "";
         }
-        return switch (positionIndex) {
-            case 0 -> "LEFT";
-            case 1 -> "MIDDLE";
-            case 2 -> "RIGHT";
-            default -> "POSITION-" + positionIndex;
-        };
+        return "R" + rowNumber + "-C" + columnNumber;
     }
 }
 

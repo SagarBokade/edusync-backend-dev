@@ -32,6 +32,16 @@ public interface ExamAttendanceRepository extends JpaRepository<ExamAttendance, 
     List<ExamAttendance> findByExamScheduleIdAndStudentIds(@Param("examScheduleId") Long examScheduleId,
                                                            @Param("studentIds") Collection<Long> studentIds);
 
+    @Query("""
+        SELECT ea FROM ExamAttendance ea
+        WHERE ea.examSchedule.id IN :examScheduleIds
+          AND ea.student.id IN :studentIds
+        """)
+    List<ExamAttendance> findByExamScheduleIdsAndStudentIds(@Param("examScheduleIds") Collection<Long> examScheduleIds,
+                                                            @Param("studentIds") Collection<Long> studentIds);
+
     boolean existsByExamScheduleIdAndRoomIdAndFinalizedTrue(Long examScheduleId, Long roomId);
+
+    boolean existsByExamScheduleIdInAndRoomIdAndFinalizedTrue(Collection<Long> examScheduleIds, Long roomId);
 }
 
