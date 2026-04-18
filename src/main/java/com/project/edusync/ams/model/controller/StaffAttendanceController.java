@@ -114,6 +114,24 @@ public class StaffAttendanceController {
         return ResponseEntity.ok(service.getUnmarkedStaff(LocalDate.parse(date), Optional.ofNullable(category)));
     }
 
+    @PostMapping("/mark-all-present")
+    @Operation(summary = "Mark all unmarked staff as Present for a date (skips leaves)")
+    public ResponseEntity<Map<String, Object>> markAllPresent(
+            @RequestParam("date") String date,
+            @RequestParam(value = "testMode", defaultValue = "false") boolean testMode) {
+        int count = service.markAllPresent(LocalDate.parse(date), testMode);
+        return ResponseEntity.ok(Map.of("marked", count, "type", "PRESENT", "date", date));
+    }
+
+    @PostMapping("/mark-all-absent")
+    @Operation(summary = "Mark all unmarked staff as Absent for a date (skips leaves)")
+    public ResponseEntity<Map<String, Object>> markAllAbsent(
+            @RequestParam("date") String date,
+            @RequestParam(value = "testMode", defaultValue = "false") boolean testMode) {
+        int count = service.markAllAbsent(LocalDate.parse(date), testMode);
+        return ResponseEntity.ok(Map.of("marked", count, "type", "ABSENT", "date", date));
+    }
+
     @GetMapping("/{recordUuid}")
     @Operation(summary = "Get staff attendance record by UUID")
     public ResponseEntity<StaffAttendanceResponseDTO> getById(
