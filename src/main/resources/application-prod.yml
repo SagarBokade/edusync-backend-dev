@@ -15,7 +15,7 @@ spring:
             auto-commit: false
 
     flyway:
-        enabled: true
+        enabled: false
         locations: classpath:db/migration
         schemas: public
         default-schema: public
