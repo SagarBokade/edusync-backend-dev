@@ -73,7 +73,8 @@ public class WebSecurityConfig {
             "http://localhost:5173",
             "http://localhost:3000",
             "http://13.206.98.253",
-            "https://siksha-intelligence-frontend-mvp.vercel.app"
+            "https://siksha-intelligence-frontend-mvp.vercel.app",
+            "https://erp.shikshaintelligence.com"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
