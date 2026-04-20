@@ -20,6 +20,7 @@ import com.project.edusync.ams.model.repository.StudentDailyAttendanceRepository
 import com.project.edusync.ams.model.repository.AbsenceDocumentationRepository;
 import com.project.edusync.ams.model.service.StudentAttendanceService;
 import com.project.edusync.ams.model.service.AttendanceEditWindowService;
+import com.project.edusync.em.model.repository.ExamScheduleRepository;
 import com.project.edusync.hrms.model.enums.DayType;
 import com.project.edusync.hrms.repository.AcademicCalendarEventRepository;
 import com.project.edusync.uis.repository.StaffRepository;
@@ -61,6 +62,7 @@ public class StudentAttendanceServiceImpl implements StudentAttendanceService {
     private final AcademicClassRepository academicClassRepository;
     private final SectionRepository sectionRepository;
     private final AcademicCalendarEventRepository academicCalendarEventRepository;
+    private final ExamScheduleRepository examScheduleRepository;
 
     @Override
     @Transactional
@@ -108,6 +110,7 @@ public class StudentAttendanceServiceImpl implements StudentAttendanceService {
             // Row-level validation
             Long resolvedStudentId = resolveStudentId(req);
             validateAttendanceDateWindow(req.getAttendanceDate());
+            ensureNotDuringExamWindow(resolvedStudentId, req.getAttendanceDate());
             String sc = Optional.ofNullable(req.getAttendanceShortCode()).orElse("").trim().toUpperCase();
             if (sc.isEmpty()) {
                 throw new InvalidAttendanceTypeException("attendanceShortCode is required (e.g., P, A, L)");
@@ -199,7 +202,7 @@ public class StudentAttendanceServiceImpl implements StudentAttendanceService {
                 spec = spec.and((root, query, cb) -> root.get("studentId").in(matchedStudentIds));
             } else if (classUuid.isPresent() || sectionUuid.isPresent()) {
                 // filter requested but no students matched
-                spec = spec.and((root, query, cb) -> cb.disjunction()); 
+                spec = spec.and((root, query, cb) -> cb.disjunction());
             }
         }
 
@@ -480,5 +483,16 @@ public class StudentAttendanceServiceImpl implements StudentAttendanceService {
 
     private boolean isNonWorkingStudentDay(LocalDate date) {
         return academicCalendarEventRepository.existsByDateAndDayTypeInAndAppliesToStudentsTrueAndIsActiveTrue(date, NON_WORKING_DAY_TYPES);
+    }
+
+    private void ensureNotDuringExamWindow(Long studentId, LocalDate attendanceDate) {
+        studentRepository.findById(studentId).ifPresent(student -> {
+            Long sectionId = student.getSection().getId();
+            Long classId = student.getSection().getAcademicClass().getId();
+            boolean examExists = examScheduleRepository.existsExamForSectionOrClassOnDate(sectionId, classId, attendanceDate);
+            if (examExists) {
+                throw new AttendanceProcessingException("Attendance is handled via exam attendance");
+            }
+        });
     }
 }

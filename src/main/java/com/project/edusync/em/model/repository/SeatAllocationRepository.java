@@ -2,6 +2,7 @@ package com.project.edusync.em.model.repository;
 
 import com.project.edusync.em.model.entity.Seat;
 import com.project.edusync.em.model.entity.SeatAllocation;
+import com.project.edusync.em.model.enums.ExamAttendanceStatus;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -38,6 +39,27 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
         Integer getPositionIndex();
         Integer getRollNo();
         String getClassName();
+    }
+
+    interface ExamRoomStudentProjection {
+        Long getExamScheduleId();
+        Long getStudentId();
+        Integer getRollNo();
+        String getFirstName();
+        String getLastName();
+        String getClassName();
+        String getSubjectName();
+        Integer getRowNumber();
+        Integer getColumnNumber();
+        String getSeatNumber();
+        ExamAttendanceStatus getAttendanceStatus();
+        Boolean getMalpractice();
+        Boolean getFinalized();
+    }
+
+    interface RoomStudentScheduleProjection {
+        Long getStudentId();
+        Long getExamScheduleId();
     }
 
     // ── 1. Occupied seat IDs in a room (ANY allocation = occupied) ─────────
@@ -390,4 +412,59 @@ public interface SeatAllocationRepository extends JpaRepository<SeatAllocation, 
         @Param("startTime") LocalDateTime startTime,
         @Param("endTime") LocalDateTime endTime,
         @Param("examScheduleId") Long examScheduleId);
+
+    @Query("""
+        SELECT sa.examSchedule.id AS examScheduleId,
+               sa.student.id AS studentId,
+               sa.student.rollNo AS rollNo,
+               sa.student.userProfile.firstName AS firstName,
+               sa.student.userProfile.lastName AS lastName,
+               sa.student.section.academicClass.name AS className,
+               sa.examSchedule.subject.name AS subjectName,
+               sa.seat.rowNumber AS rowNumber,
+               sa.seat.columnNumber AS columnNumber,
+               sa.seat.label AS seatNumber,
+               ea.status AS attendanceStatus,
+               ea.malpracticeReported AS malpractice,
+               ea.finalized AS finalized
+        FROM SeatAllocation sa
+        LEFT JOIN ExamAttendance ea
+               ON ea.examSchedule.id = sa.examSchedule.id
+              AND ea.student.id = sa.student.id
+              AND ea.room.id = sa.seat.room.id
+        WHERE sa.seat.room.id = :roomId
+          AND sa.startTime < :endTime
+          AND sa.endTime > :startTime
+        ORDER BY sa.seat.rowNumber ASC,
+                 sa.seat.columnNumber ASC,
+                 sa.positionIndex ASC
+        """)
+    List<ExamRoomStudentProjection> findExamRoomStudentsByTimeWindow(@Param("roomId") Long roomId,
+                                                                     @Param("startTime") LocalDateTime startTime,
+                                                                     @Param("endTime") LocalDateTime endTime);
+
+    @Query("""
+        SELECT sa.student.id
+        FROM SeatAllocation sa
+        WHERE sa.seat.room.id = :roomId
+          AND sa.startTime < :endTime
+          AND sa.endTime > :startTime
+        """)
+    List<Long> findExamRoomStudentIdsByTimeWindow(@Param("roomId") Long roomId,
+                                                  @Param("startTime") LocalDateTime startTime,
+                                                  @Param("endTime") LocalDateTime endTime);
+
+    @Query("""
+        SELECT sa.student.id AS studentId,
+               sa.examSchedule.id AS examScheduleId
+        FROM SeatAllocation sa
+        WHERE sa.seat.room.id = :roomId
+          AND sa.startTime < :endTime
+          AND sa.endTime > :startTime
+          AND sa.student.id IN :studentIds
+        """)
+    List<RoomStudentScheduleProjection> findStudentSchedulesInRoomByTimeWindowAndStudentIds(@Param("roomId") Long roomId,
+                                                                                             @Param("startTime") LocalDateTime startTime,
+                                                                                             @Param("endTime") LocalDateTime endTime,
+                                                                                             @Param("studentIds") Collection<Long> studentIds);
 }

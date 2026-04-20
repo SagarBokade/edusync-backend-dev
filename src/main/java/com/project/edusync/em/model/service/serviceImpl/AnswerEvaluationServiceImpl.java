@@ -82,6 +82,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     private final AnswerSheetAnnotationRepository annotationRepository;
     private final AnswerSheetImageRepository answerSheetImageRepository;
     private final ExamScheduleRepository examScheduleRepository;
+    private final ExamAttendanceRepository examAttendanceRepository;
     private final StudentRepository studentRepository;
     private final StaffRepository staffRepository;
     private final StudentExamStatusRepository studentExamStatusRepository;
@@ -223,8 +224,19 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         Map<Long, AnswerSheet> answerSheetByStudentId = answerSheetRepository.findByExamScheduleId(scheduleId).stream()
                 .collect(Collectors.toMap(a -> a.getStudent().getId(), a -> a, (a, b) -> a));
 
+        Map<Long, Boolean> malpracticeByStudentId = examAttendanceRepository
+                .findByExamScheduleIdAndStudentIds(scheduleId, students.stream().map(Student::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        a -> a.getStudent().getId(),
+                        a -> a.isMalpracticeReported() || a.getStatus() == com.project.edusync.em.model.enums.ExamAttendanceStatus.MALPRACTICE,
+                        (a, b) -> a));
+
         return students.stream()
-                .map(student -> toTeacherEvaluationStudentResponse(student, answerSheetByStudentId.get(student.getId())))
+                .map(student -> toTeacherEvaluationStudentResponse(
+                        student,
+                        answerSheetByStudentId.get(student.getId()),
+                        malpracticeByStudentId.getOrDefault(student.getId(), false)))
                 .collect(Collectors.toList());
     }
 
@@ -246,8 +258,19 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         Map<Long, AnswerSheet> answerSheetByStudentId = answerSheetRepository.findByExamScheduleId(scheduleId).stream()
                 .collect(Collectors.toMap(a -> a.getStudent().getId(), a -> a, (a, b) -> a));
 
+        Map<Long, Boolean> malpracticeByStudentId = examAttendanceRepository
+                .findByExamScheduleIdAndStudentIds(scheduleId, students.getContent().stream().map(Student::getId).toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        a -> a.getStudent().getId(),
+                        a -> a.isMalpracticeReported() || a.getStatus() == com.project.edusync.em.model.enums.ExamAttendanceStatus.MALPRACTICE,
+                        (a, b) -> a));
+
         List<TeacherEvaluationStudentResponseDTO> content = students.getContent().stream()
-                .map(student -> toTeacherEvaluationStudentResponse(student, answerSheetByStudentId.get(student.getId())))
+                .map(student -> toTeacherEvaluationStudentResponse(
+                        student,
+                        answerSheetByStudentId.get(student.getId()),
+                        malpracticeByStudentId.getOrDefault(student.getId(), false)))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(content, pageable, students.getTotalElements());
@@ -277,18 +300,18 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         try {
             MediaUploadProperties.Cloudinary cfg = mediaUploadProperties.getCloudinary();
             String folder = cfg.getFolder() != null ? cfg.getFolder() : "answer-sheets";
-            
+
             String originalName = file.getOriginalFilename();
-            String nameWithoutExtension = originalName != null && originalName.contains(".") 
-                ? originalName.substring(0, originalName.lastIndexOf('.')) 
+            String nameWithoutExtension = originalName != null && originalName.contains(".")
+                ? originalName.substring(0, originalName.lastIndexOf('.'))
                 : (originalName != null ? originalName : "file");
 
             String publicId = folder + "/" + UUID.randomUUID() + "_" + nameWithoutExtension;
-            
+
             var uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.asMap(
                     "public_id", publicId,
                     "resource_type", "raw",
-                    "flags", "attachment" 
+                    "flags", "attachment"
             ));
             fileUrl = (String) uploadResult.get("secure_url");
         } catch (Exception e) {
@@ -783,7 +806,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     public int publishResultsBulk(List<Long> resultIds) {
         requireAdmin();
         if (resultIds == null || resultIds.isEmpty()) return 0;
-        
+
         List<EvaluationResult> results = evaluationResultRepository.findAllByIdInAndStatusWithContext(resultIds, EvaluationResultStatus.APPROVED);
         if (results.isEmpty()) return 0;
 
@@ -821,18 +844,18 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
     @Transactional(readOnly = true)
     public ClassResultSummaryResponseDTO getClassResultSummary(UUID classId, UUID examId) {
         requireAdmin();
-        
+
         List<ExamSchedule> allSchedules = examScheduleRepository.findByExamUuid(examId);
         List<ExamSchedule> classSchedules = allSchedules.stream()
             .filter(es -> es.getAcademicClass().getUuid().equals(classId))
             .collect(Collectors.toList());
-            
+
         if (classSchedules.isEmpty()) {
             throw new EdusyncException("EVAL-404", "No schedules found for class and exam", HttpStatus.NOT_FOUND);
         }
-        
+
         Long internalExamId = classSchedules.get(0).getExam().getId();
-        
+
         List<Object[]> counts = examScheduleRepository.countActiveStudentsPerSchedule(internalExamId);
         long totalStudents = 0;
         List<Long> classScheduleIds = classSchedules.stream().map(ExamSchedule::getId).collect(Collectors.toList());
@@ -842,21 +865,21 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 totalStudents += ((Number) row[1]).longValue();
             }
         }
-        
+
         long absentStudents = studentExamStatusRepository.countAbsentStudentsByClassAndExam(classId, examId);
-        
+
         List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
              .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
              .collect(Collectors.toList());
-             
+
         long evaluatedStudents = results.stream()
-            .filter(r -> r.getStatus() == EvaluationResultStatus.SUBMITTED || 
-                         r.getStatus() == EvaluationResultStatus.APPROVED || 
+            .filter(r -> r.getStatus() == EvaluationResultStatus.SUBMITTED ||
+                         r.getStatus() == EvaluationResultStatus.APPROVED ||
                          r.getStatus() == EvaluationResultStatus.PUBLISHED)
             .count();
-            
+
         long pendingStudents = totalStudents - absentStudents - evaluatedStudents;
-        
+
         String status = "INCOMPLETE";
         if (pendingStudents <= 0) {
             long publishedCount = results.stream().filter(r -> r.getStatus() == EvaluationResultStatus.PUBLISHED).count();
@@ -869,7 +892,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 status = "READY_FOR_APPROVAL";
             }
         }
-        
+
         return ClassResultSummaryResponseDTO.builder()
                 .classId(classId)
                 .className(classSchedules.get(0).getAcademicClass().getName())
@@ -892,18 +915,18 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         if (summary.getPendingStudents() > 0) {
             throw new EdusyncException("EVAL-409", "Cannot approve class yet. Still " + summary.getPendingStudents() + " students pending evaluation or absent marking.", HttpStatus.CONFLICT);
         }
-        
+
         List<ExamSchedule> allSchedules = examScheduleRepository.findByExamUuid(examId);
         List<Long> classScheduleIds = allSchedules.stream()
             .filter(es -> es.getAcademicClass().getUuid().equals(classId))
             .map(ExamSchedule::getId)
             .collect(Collectors.toList());
-            
+
         List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
              .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
              .filter(r -> r.getStatus() == EvaluationResultStatus.SUBMITTED)
              .collect(Collectors.toList());
-             
+
         User currentUser = authUtil.getCurrentUser();
         for (EvaluationResult result : results) {
             result.setStatus(EvaluationResultStatus.APPROVED);
@@ -924,14 +947,14 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
             .filter(es -> es.getAcademicClass().getUuid().equals(classId))
             .map(ExamSchedule::getId)
             .collect(Collectors.toList());
-            
+
         List<EvaluationResult> results = evaluationResultRepository.findAllWithContext().stream()
              .filter(r -> classScheduleIds.contains(r.getAnswerSheet().getExamSchedule().getId()))
              .filter(r -> r.getStatus() == EvaluationResultStatus.APPROVED)
              .collect(Collectors.toList());
-             
+
         if (results.isEmpty()) return 0;
-        
+
         List<Long> resultIds = results.stream().map(EvaluationResult::getId).collect(Collectors.toList());
         return publishResultsBulk(resultIds);
     }
@@ -942,13 +965,13 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
         ExamSchedule schedule = getSchedule(scheduleId);
         Student student = studentRepository.findById(studentId)
             .orElseThrow(() -> new EdusyncException("EVAL-404", "Student not found", HttpStatus.NOT_FOUND));
-            
+
         StudentExamStatus status = studentExamStatusRepository.findByStudentIdAndExamScheduleId(studentId, scheduleId)
             .orElseGet(() -> StudentExamStatus.builder()
                 .student(student)
                 .examSchedule(schedule)
                 .build());
-                
+
         status.setIsAbsent(isAbsent);
         studentExamStatusRepository.save(status);
     }
@@ -1062,7 +1085,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 Path filePath = ensureStorageRoot().resolve(answerSheet.getFileUrl()).normalize();
                 resource = new UrlResource(filePath.toUri());
             }
-            
+
             if (!resource.exists() || !resource.isReadable()) {
                 throw new EdusyncException("EVAL-404", "Answer sheet file not found", HttpStatus.NOT_FOUND);
             }
@@ -1360,7 +1383,9 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .build();
     }
 
-    private TeacherEvaluationStudentResponseDTO toTeacherEvaluationStudentResponse(Student student, AnswerSheet sheet) {
+    private TeacherEvaluationStudentResponseDTO toTeacherEvaluationStudentResponse(Student student,
+                                                                                  AnswerSheet sheet,
+                                                                                  boolean malpracticeReported) {
         String fullName = student.getUserProfile().getFirstName() + " " + student.getUserProfile().getLastName();
         return TeacherEvaluationStudentResponseDTO.builder()
                 .studentId(student.getUuid())
@@ -1368,6 +1393,7 @@ public class AnswerEvaluationServiceImpl implements AnswerEvaluationService {
                 .enrollmentNumber(student.getEnrollmentNumber())
                 .answerSheetId(sheet != null ? sheet.getId() : null)
                 .answerSheetStatus(sheet != null ? sheet.getStatus() : null)
+                .malpracticeReported(malpracticeReported)
                 .build();
     }
 
