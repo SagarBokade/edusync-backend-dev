@@ -110,7 +110,6 @@ public class StudentAttendanceServiceImpl implements StudentAttendanceService {
             // Row-level validation
             Long resolvedStudentId = resolveStudentId(req);
             validateAttendanceDateWindow(req.getAttendanceDate());
-            ensureNotDuringExamWindow(resolvedStudentId, req.getAttendanceDate());
             String sc = Optional.ofNullable(req.getAttendanceShortCode()).orElse("").trim().toUpperCase();
             if (sc.isEmpty()) {
                 throw new InvalidAttendanceTypeException("attendanceShortCode is required (e.g., P, A, L)");
