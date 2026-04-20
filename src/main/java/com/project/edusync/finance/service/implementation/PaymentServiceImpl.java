@@ -35,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -280,9 +282,20 @@ public class PaymentServiceImpl implements PaymentService {
                 .metadata(java.util.Map.of("invoiceId", invoice.getId(), "transactionId", verifyDTO.getGatewayTransactionId(), "amount", payment.getAmountPaid(), "status", "SUCCESS"))
                 .build();
         dashboardEventService.pushEvent(event);
-
         return paymentMapper.toDto(savedPayment);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentResponseDTO> getPaymentsForStudent(Long studentId) {
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new StudentNotFoundException("Student not found with student ID: " + studentId));
+
+        List<Payment> payments = paymentRepository.findByStudent(student);
+        return payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
+                .map(paymentMapper::toDto)
+                .toList();
+    }
 }
 
