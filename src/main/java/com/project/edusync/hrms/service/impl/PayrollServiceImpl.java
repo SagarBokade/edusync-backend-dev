@@ -55,6 +55,11 @@ import com.project.edusync.uis.model.entity.Staff;
 import com.project.edusync.uis.model.entity.StaffSensitiveInfo;
 import com.project.edusync.uis.repository.StaffRepository;
 import com.project.edusync.uis.repository.StaffSensitiveInfoRepository;
+import com.project.edusync.finance.service.implementation.GeneralLedgerService;
+import com.project.edusync.finance.model.entity.JournalEntryLine;
+import com.project.edusync.finance.model.enums.JournalReferenceType;
+import com.project.edusync.finance.repository.AccountRepository;
+import com.project.edusync.finance.model.entity.Account;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -112,6 +117,12 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Value("${app.hrms.payroll.attendance.partial-mark-policy:TREAT_UNMARKED_AS_ABSENT}")
     private String partialMarkPolicy;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private GeneralLedgerService glService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private AccountRepository accountRepository;
 
     @Override
     @Transactional
@@ -313,6 +324,51 @@ public class PayrollServiceImpl implements PayrollService {
         run.setStatus(PayrollRunStatus.DISBURSED);
         PayrollRun saved = payrollRunRepository.save(run);
         updatePayslipStatusByRun(runId, PayrollRunStatus.DISBURSED);
+        
+        // --- GL BRIDGE: Post Payroll Journal Entry ---
+        // Need schoolId. Usually bound per tenant. Since it's a monolithic system we assume schoolId = 1L.
+        Long schoolId = 1L; 
+        
+        // Find default accounts: Salary Expense (type EXPENSE), Bank/Cash (type ASSET), Deductions (type LIABILITY)
+        List<Account> accounts = accountRepository.findBySchoolId(schoolId);
+        Account salaryExpenseAccount = accounts.stream().filter(a -> a.getCode().startsWith("61")).findFirst().orElse(null);
+        Account bankAccount = accounts.stream().filter(a -> a.getCode().startsWith("11")).findFirst().orElse(null);
+        Account deductionsAccount = accounts.stream().filter(a -> a.getCode().startsWith("21")).findFirst().orElse(null); // Assuming 21XX is payroll liabilities
+
+        if (salaryExpenseAccount != null && bankAccount != null) {
+            JournalEntryLine drLine = new JournalEntryLine();
+            drLine.setAccount(salaryExpenseAccount);
+            drLine.setAmount(saved.getTotalGross());
+            drLine.setIsDebit(true);
+            drLine.setDescription("Salary Expense for run " + saved.getPayMonth() + "/" + saved.getPayYear());
+
+            JournalEntryLine crBankLine = new JournalEntryLine();
+            crBankLine.setAccount(bankAccount);
+            crBankLine.setAmount(saved.getTotalNet());
+            crBankLine.setIsDebit(false);
+            crBankLine.setDescription("Net Salary Payout");
+            
+            List<JournalEntryLine> lines = new java.util.ArrayList<>(List.of(drLine, crBankLine));
+            
+            if (saved.getTotalDeductions().compareTo(java.math.BigDecimal.ZERO) > 0 && deductionsAccount != null) {
+                JournalEntryLine crDedLine = new JournalEntryLine();
+                crDedLine.setAccount(deductionsAccount);
+                crDedLine.setAmount(saved.getTotalDeductions());
+                crDedLine.setIsDebit(false);
+                crDedLine.setDescription("Payroll Deductions Payable");
+                lines.add(crDedLine);
+            }
+            
+            glService.createJournalEntry(
+                LocalDate.now(),
+                "Payroll Run Disbursed - " + saved.getPayMonth() + "/" + saved.getPayYear(),
+                JournalReferenceType.PAYROLL_RUN,
+                saved.getId(),
+                lines,
+                schoolId
+            );
+        }
+        
         return toRunResponse(saved, payrollEntryRepository.findByPayrollRun_IdAndActiveTrueOrderByStaff_IdAsc(runId));
     }
 
