@@ -16,7 +16,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("${api.url}/auth/examination/evaluation")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SCHOOL_ADMIN','ROLE_SUPER_ADMIN')")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SCHOOL_ADMIN','ROLE_SUPER_ADMIN','ROLE_EXAM_CONTROLLER')")
 public class AnswerEvaluationAdminController {
 
     private final AnswerEvaluationService answerEvaluationService;

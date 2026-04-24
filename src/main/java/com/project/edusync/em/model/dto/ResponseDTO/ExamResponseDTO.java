@@ -21,6 +21,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ExamResponseDTO {
 
+    private Long id;
     private UUID uuid;
     private String name;
     private String academicYear;
