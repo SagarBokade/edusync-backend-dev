@@ -6,7 +6,10 @@ import com.project.edusync.hrms.repository.LeaveApplicationRepository;
 import com.project.edusync.hrms.repository.PayrollRunRepository;
 import com.project.edusync.hrms.repository.StaffGradeAssignmentRepository;
 import com.project.edusync.hrms.repository.StaffSalaryMappingRepository;
+import com.project.edusync.ams.model.enums.LateClockInStatus;
+import com.project.edusync.ams.model.repository.LateClockInRequestRepository;
 import com.project.edusync.ams.model.repository.StaffDailyAttendanceRepository;
+import com.project.edusync.teacher.repository.ProxyRequestRepository;
 import com.project.edusync.uis.model.enums.StaffCategory;
 import com.project.edusync.uis.repository.StaffRepository;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,10 @@ class HrmsDashboardServiceImplTest {
     private StaffGradeAssignmentRepository staffGradeAssignmentRepository;
     @Mock
     private StaffDailyAttendanceRepository staffDailyAttendanceRepository;
+    @Mock
+    private ProxyRequestRepository proxyRequestRepository;
+    @Mock
+    private LateClockInRequestRepository lateClockInRequestRepository;
 
     @InjectMocks
     private HrmsDashboardServiceImpl service;
@@ -72,6 +79,8 @@ class HrmsDashboardServiceImplTest {
                 new Object[]{"PRT", "Primary Teacher", 4L},
                 new Object[]{"TGT", "Trained Graduate Teacher", 3L}
         ));
+        when(proxyRequestRepository.findActiveRequestsOnDate(today)).thenReturn(List.of());
+        when(lateClockInRequestRepository.countByStatus(LateClockInStatus.PENDING)).thenReturn(0L);
 
         HrmsDashboardSummaryDTO result = service.getSummary();
 
