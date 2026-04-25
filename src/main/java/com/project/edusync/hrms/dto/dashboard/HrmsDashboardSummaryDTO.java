@@ -27,5 +27,9 @@ public class HrmsDashboardSummaryDTO {
     // Phase 1 additions
     private AttendanceHeatmapDTO currentMonthHeatmap;
     private int pendingApprovalRequests;
+    // Phase 5 — Dashboard Intelligence
+    private int pendingProxyCount;          // proxy requests awaiting coverage today
+    private int pendingLateClockInCount;    // late clock-in requests PENDING admin approval
+    private double staffPresentPercent;     // today's attendance rate (%);
 }
 

@@ -12,7 +12,11 @@ import com.project.edusync.hrms.repository.PayrollRunRepository;
 import com.project.edusync.hrms.repository.StaffGradeAssignmentRepository;
 import com.project.edusync.hrms.repository.StaffSalaryMappingRepository;
 import com.project.edusync.hrms.service.HrmsDashboardService;
+import com.project.edusync.ams.model.repository.LateClockInRequestRepository;
 import com.project.edusync.ams.model.repository.StaffDailyAttendanceRepository;
+import com.project.edusync.ams.model.enums.LateClockInStatus;
+import com.project.edusync.teacher.repository.ProxyRequestRepository;
+import com.project.edusync.teacher.model.enums.ProxyRequestStatus;
 import com.project.edusync.uis.model.enums.StaffCategory;
 import com.project.edusync.uis.repository.StaffRepository;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +41,8 @@ public class HrmsDashboardServiceImpl implements HrmsDashboardService {
     private final PayrollRunRepository payrollRunRepository;
     private final StaffGradeAssignmentRepository staffGradeAssignmentRepository;
     private final StaffDailyAttendanceRepository staffDailyAttendanceRepository;
+    private final ProxyRequestRepository proxyRequestRepository;
+    private final LateClockInRequestRepository lateClockInRequestRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -96,6 +102,20 @@ public class HrmsDashboardServiceImpl implements HrmsDashboardService {
 
         AttendanceHeatmapDTO heatmap = buildHeatmap(today.getYear(), today.getMonthValue());
 
+        // ── Phase 5: Dashboard Intelligence fields ──────────────────────────
+        // Pending proxy requests today (PENDING status — not yet covered)
+        long pendingProxyLong = proxyRequestRepository.findActiveRequestsOnDate(today)
+                .stream().filter(r -> r.getStatus() == ProxyRequestStatus.PENDING).count();
+        int pendingProxyCount = toInt(pendingProxyLong);
+
+        // Pending late clock-in approvals
+        int pendingLateClockInCount = toInt(lateClockInRequestRepository.countByStatus(LateClockInStatus.PENDING));
+
+        // Staff present percentage (present / totalActiveStaff * 100), clamp 0-100
+        double staffPresentPercent = totalActiveStaff > 0
+                ? Math.min(100.0, Math.round((todayPresent * 100.0 / totalActiveStaff) * 10.0) / 10.0)
+                : 0.0;
+
         return HrmsDashboardSummaryDTO.builder()
                 .totalActiveStaff(totalActiveStaff)
                 .staffWithSalaryMapping(staffWithSalaryMapping)
@@ -114,6 +134,9 @@ public class HrmsDashboardServiceImpl implements HrmsDashboardService {
                 .categoryAttendance(categoryAttendance)
                 .currentMonthHeatmap(heatmap)
                 .pendingApprovalRequests(0)
+                .pendingProxyCount(pendingProxyCount)
+                .pendingLateClockInCount(pendingLateClockInCount)
+                .staffPresentPercent(staffPresentPercent)
                 .build();
     }
 

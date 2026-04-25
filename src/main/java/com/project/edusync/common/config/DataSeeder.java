@@ -93,6 +93,7 @@ public class DataSeeder implements ApplicationRunner {
                 "ROLE_EXAM_CONTROLLER",
                 "ROLE_SUPER_ADMIN",
                 "ROLE_SCHOOL_ADMIN",
+                "ROLE_HR_ADMIN",
                 "ROLE_SECURITY_GUARD",
                 "ROLE_APPLICANT"
         );
@@ -264,6 +265,41 @@ public class DataSeeder implements ApplicationRunner {
                 "admission:form:submit",
                 "admission:form:read:own",
                 "admission:payment:create"
+        ));
+
+        blueprint.put("ROLE_HR_ADMIN", List.of(
+                "profile:read:own",
+                "profile:update:own",
+                "profile:read:all",
+                "dashboard:read:school",
+                "users:read:all",
+                "hrms:leave:manage",
+                "hrms:leave-template:manage",
+                "hrms:leave-balance:manage",
+                "hrms:leave:approve",
+                "hrms:attendance:manage",
+                "hrms:attendance:read:all",
+                "hrms:payroll:manage",
+                "hrms:payroll:run",
+                "hrms:salary:manage",
+                "hrms:salary:read:all",
+                "hrms:designation:manage",
+                "hrms:grade:manage",
+                "hrms:shift:manage",
+                "hrms:onboarding:manage",
+                "hrms:document:manage",
+                "hrms:loan:manage",
+                "hrms:overtime:manage",
+                "hrms:expense:manage",
+                "hrms:training:manage",
+                "hrms:appraisal:manage",
+                "hrms:promotion:manage",
+                "hrms:exit:manage",
+                "hrms:statutory:manage",
+                "hrms:bank:manage",
+                "hrms:proxy:manage",
+                "attendance:read:all",
+                "reports:read:school"
         ));
 
         blueprint.put("ROLE_SCHOOL_ADMIN", List.of(
