@@ -5,6 +5,8 @@ import com.project.edusync.finance.dto.payment.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
+
 /**
  * Service interface for managing Payments.
  */
@@ -63,4 +65,12 @@ public interface PaymentService {
      * @return The response DTO of the confirmed, 'SUCCESS' payment.
      */
     PaymentResponseDTO verifyOnlinePayment(VerifyPaymentRequestDTO verifyDTO) throws Exception;
+
+    /**
+     * Retrieves all successful payments made for a specific student.
+     *
+     * @param studentId The ID of the student.
+     * @return A list of successful payments.
+     */
+    List<PaymentResponseDTO> getPaymentsForStudent(Long studentId);
 }

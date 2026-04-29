@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.List;
 
 /**
@@ -23,6 +24,7 @@ import java.util.List;
 @RestController
 @RequestMapping("${api.url}/auth/finance/parent")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('PARENT', 'GUARDIAN')")
 public class ParentFinanceController {
 
     private final InvoiceService invoiceService;
@@ -31,8 +33,7 @@ public class ParentFinanceController {
 
     /**
      * GET /api/v1/finance/parent/invoices/for-student/{studentId}
-     * (TEMPORARY ENDPOINT) Retrieves all invoices for a specific student.
-     * This will be replaced by a secure GET /invoices endpoint.
+     * Retrieves all invoices for a specific student.
      */
     @GetMapping("/invoices/for-student/{studentId}")
     public ResponseEntity<List<InvoiceResponseDTO>> getInvoicesForStudent(
@@ -45,8 +46,6 @@ public class ParentFinanceController {
     /**
      * GET /api/v1/finance/parent/invoices/{invoiceId}
      * Gets the detailed line-item breakdown of a specific invoice.
-     * (WARNING: This endpoint is currently insecure and does not check
-     * if the invoice belongs to the authenticated parent).
      */
     @GetMapping("/invoices/{invoiceId}")
     public ResponseEntity<InvoiceResponseDTO> getInvoiceByIdForParent(
@@ -65,7 +64,6 @@ public class ParentFinanceController {
     public ResponseEntity<InitiatePaymentResponseDTO> initiatePayment(
             @Valid @RequestBody InitiatePaymentRequestDTO requestDTO) throws Exception {
 
-        // Let the GlobalExceptionHandler handle exceptions
         InitiatePaymentResponseDTO response = paymentService.initiateOnlinePayment(requestDTO);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
@@ -78,8 +76,18 @@ public class ParentFinanceController {
     public ResponseEntity<PaymentResponseDTO> verifyPayment(
             @Valid @RequestBody VerifyPaymentRequestDTO verifyDTO) throws Exception {
 
-        // Let the GlobalExceptionHandler handle exceptions
         PaymentResponseDTO response = paymentService.verifyOnlinePayment(verifyDTO);
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    /**
+     * GET /api/v1/finance/parent/payments/for-student/{studentId}
+     * Retrieves all successful payments made for a specific student.
+     */
+    @GetMapping("/payments/for-student/{studentId}")
+    public ResponseEntity<List<PaymentResponseDTO>> getPaymentsForStudent(
+            @PathVariable Long studentId) {
+        List<PaymentResponseDTO> payments = paymentService.getPaymentsForStudent(studentId);
+        return new ResponseEntity<>(payments, HttpStatus.OK);
     }
 }
