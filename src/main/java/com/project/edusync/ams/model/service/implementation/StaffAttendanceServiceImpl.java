@@ -89,6 +89,19 @@ public class StaffAttendanceServiceImpl implements StaffAttendanceService {
             if (isOnLeave) {
                 throw new AttendanceProcessingException("Check-in blocked. You are on an approved leave today. Please contact School Admin if this is an error.");
             }
+
+            ShiftDefinition shift = staffShiftMappingRepository.findCurrentMappingsByStaffId(staffId, req.getAttendanceDate()).stream()
+                    .map(StaffShiftMapping::getShift)
+                    .findFirst()
+                    .orElse(null);
+
+            if (shift == null) {
+                throw new AttendanceProcessingException("Check-in blocked. You are not mapped to a shift yet. Please contact your administrator.");
+            }
+
+            if (!isShiftApplicableForDay(shift, req.getAttendanceDate().getDayOfWeek().getValue())) {
+                throw new AttendanceProcessingException("Check-in blocked. Today is a non-working day according to your shift schedule.");
+            }
         }
 
         at = resolveAttendanceType(staffId, req.getAttendanceDate(), req.getTimeIn(), req.getAttendanceShortCode());
@@ -377,6 +390,19 @@ public class StaffAttendanceServiceImpl implements StaffAttendanceService {
             if (isOnLeave) {
                 throw new AttendanceProcessingException("Update blocked. You are on an approved leave today.");
             }
+
+            ShiftDefinition shift = staffShiftMappingRepository.findCurrentMappingsByStaffId(e.getStaffId(), req.getAttendanceDate()).stream()
+                    .map(StaffShiftMapping::getShift)
+                    .findFirst()
+                    .orElse(null);
+
+            if (shift == null) {
+                throw new AttendanceProcessingException("Update blocked. You are not mapped to a shift yet. Please contact your administrator.");
+            }
+
+            if (!isShiftApplicableForDay(shift, req.getAttendanceDate().getDayOfWeek().getValue())) {
+                throw new AttendanceProcessingException("Update blocked. Today is a non-working day according to your shift schedule.");
+            }
         }
 
         at = resolveAttendanceType(e.getStaffId(), req.getAttendanceDate(), req.getTimeIn(), req.getAttendanceShortCode());
@@ -516,35 +542,56 @@ public class StaffAttendanceServiceImpl implements StaffAttendanceService {
                 .orElseGet(() -> shiftDefinitionRepository.findFirstByIsDefaultTrueAndActiveTrueOrderByIdAsc().orElse(null));
 
         if (shift == null) {
+            // No shift defined: always mark as Present
             return attendanceTypeRepo.findByShortCodeIgnoreCase("P")
                     .orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P"));
         }
 
         LocalTime startTime = shift.getStartTime();
-        LocalTime endTime = shift.getEndTime();
+        LocalTime endTime   = shift.getEndTime();
         int grace = Optional.ofNullable(shift.getGraceMinutes()).orElse(0);
 
-        long totalMinutes = Duration.between(startTime, endTime).toMinutes();
-        if (totalMinutes < 0) totalMinutes += 1440; 
-        
+        // Total shift duration in minutes (handles overnight shifts like 22:00-06:00)
+        long totalShiftMinutes = Duration.between(startTime, endTime).toMinutes();
+        if (totalShiftMinutes <= 0) totalShiftMinutes += 1440;
+
+        // maxLateThreshold: configurable per shift, defaults to half the shift duration
+        long maxLateThreshold = Optional.ofNullable(shift.getMaxLateThresholdMinutes())
+                .map(Integer::longValue)
+                .orElse(totalShiftMinutes / 2);
+
+        // Minutes elapsed between shift start and actual clock-in
         long elapsed = Duration.between(startTime, timeIn).toMinutes();
-        if (elapsed < -720) elapsed += 1440; // If punch in before midnight for night shift
+        // Handle negative values (e.g., clock-in before midnight for early morning shifts)
+        if (elapsed < -720) elapsed += 1440;
 
-        // Fixed 2-hour hard cutoff: beyond 120 minutes late, mark as Half Day instead of blocking
-        long halfDayCutoffMinutes = 120;
-
-        if (elapsed > halfDayCutoffMinutes) {
-            return attendanceTypeRepo.findByShortCodeIgnoreCase("HD")
-                .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("L")
-                    .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("P")
-                        .orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P"))));
-        } else if (elapsed > grace) {
-            return attendanceTypeRepo.findByShortCodeIgnoreCase("L")
-                .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("P").orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P")));
-        } else {
-            return attendanceTypeRepo.findByShortCodeIgnoreCase("P").orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P"));
+        // KEY FIX: If the teacher clocks in AFTER the shift window has completely ended
+        // (e.g., 11:58 PM with an 08:00-16:00 shift), clamp elapsed to the shift boundary.
+        // We treat them as clocking in at the very end of the shift = maximally late.
+        if (elapsed > totalShiftMinutes) {
+            elapsed = totalShiftMinutes;
         }
+
+        // BEYOND MAX LATE THRESHOLD → Half Day
+        if (elapsed > maxLateThreshold) {
+            return attendanceTypeRepo.findByShortCodeIgnoreCase("HD")
+                    .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("L")
+                            .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("P")
+                                    .orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P"))));
+        }
+
+        // LATE (within maxLateThreshold, but beyond grace period) → Late
+        if (elapsed > grace) {
+            return attendanceTypeRepo.findByShortCodeIgnoreCase("L")
+                    .orElseGet(() -> attendanceTypeRepo.findByShortCodeIgnoreCase("P")
+                            .orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P")));
+        }
+
+        // ON TIME (within grace period) → Present
+        return attendanceTypeRepo.findByShortCodeIgnoreCase("P")
+                .orElseThrow(() -> new AttendanceProcessingException("Missing AttendanceType P"));
     }
+
 
     private void validateTimes(LocalTime in, LocalTime out) {
         if (in != null && out != null && in.isAfter(out)) {

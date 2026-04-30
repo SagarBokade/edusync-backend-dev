@@ -6,7 +6,10 @@ import com.project.edusync.hrms.repository.LeaveApplicationRepository;
 import com.project.edusync.hrms.repository.PayrollRunRepository;
 import com.project.edusync.hrms.repository.StaffGradeAssignmentRepository;
 import com.project.edusync.hrms.repository.StaffSalaryMappingRepository;
+import com.project.edusync.ams.model.enums.LateClockInStatus;
+import com.project.edusync.ams.model.repository.LateClockInRequestRepository;
 import com.project.edusync.ams.model.repository.StaffDailyAttendanceRepository;
+import com.project.edusync.teacher.repository.ProxyRequestRepository;
 import com.project.edusync.uis.model.enums.StaffCategory;
 import com.project.edusync.uis.repository.StaffRepository;
 import org.junit.jupiter.api.Test;
@@ -38,6 +41,10 @@ class HrmsDashboardServiceImplTest {
     private StaffGradeAssignmentRepository staffGradeAssignmentRepository;
     @Mock
     private StaffDailyAttendanceRepository staffDailyAttendanceRepository;
+    @Mock
+    private ProxyRequestRepository proxyRequestRepository;
+    @Mock
+    private LateClockInRequestRepository lateClockInRequestRepository;
 
     @InjectMocks
     private HrmsDashboardServiceImpl service;
@@ -53,17 +60,8 @@ class HrmsDashboardServiceImplTest {
         when(staffSalaryMappingRepository.countDistinctStaffWithActiveMappingOnDate(today, LocalDate.of(9999, 12, 31))).thenReturn(7L);
         when(leaveApplicationRepository.countByActiveTrueAndStatus(LeaveApplicationStatus.PENDING)).thenReturn(3L);
         when(leaveApplicationRepository.countDistinctStaffOnApprovedLeave(today)).thenReturn(2L);
-        when(leaveApplicationRepository.countDistinctStaffOnApprovedLeaveByCategoryAndDate(StaffCategory.TEACHING, today)).thenReturn(1L);
-        when(leaveApplicationRepository.countDistinctStaffOnApprovedLeaveByCategoryAndDate(StaffCategory.NON_TEACHING_ADMIN, today)).thenReturn(1L);
-        when(leaveApplicationRepository.countDistinctStaffOnApprovedLeaveByCategoryAndDate(StaffCategory.NON_TEACHING_SUPPORT, today)).thenReturn(0L);
         when(staffDailyAttendanceRepository.countDistinctPresentStaffByDate(today)).thenReturn(6L);
         when(staffDailyAttendanceRepository.countDistinctAbsentStaffByDate(today)).thenReturn(1L);
-        when(staffDailyAttendanceRepository.countDistinctPresentStaffByDateAndCategory(today, StaffCategory.TEACHING)).thenReturn(3L);
-        when(staffDailyAttendanceRepository.countDistinctPresentStaffByDateAndCategory(today, StaffCategory.NON_TEACHING_ADMIN)).thenReturn(2L);
-        when(staffDailyAttendanceRepository.countDistinctPresentStaffByDateAndCategory(today, StaffCategory.NON_TEACHING_SUPPORT)).thenReturn(1L);
-        when(staffDailyAttendanceRepository.countDistinctAbsentStaffByDateAndCategory(today, StaffCategory.TEACHING)).thenReturn(1L);
-        when(staffDailyAttendanceRepository.countDistinctAbsentStaffByDateAndCategory(today, StaffCategory.NON_TEACHING_ADMIN)).thenReturn(0L);
-        when(staffDailyAttendanceRepository.countDistinctAbsentStaffByDateAndCategory(today, StaffCategory.NON_TEACHING_SUPPORT)).thenReturn(0L);
 
         when(payrollRunRepository.sumTotalNetByMonthAndStatuses(any(), any(), any()))
                 .thenReturn(new BigDecimal("120000.00"));
@@ -72,6 +70,8 @@ class HrmsDashboardServiceImplTest {
                 new Object[]{"PRT", "Primary Teacher", 4L},
                 new Object[]{"TGT", "Trained Graduate Teacher", 3L}
         ));
+        when(proxyRequestRepository.countPendingByDate(today)).thenReturn(0L);
+        when(lateClockInRequestRepository.countByStatus(LateClockInStatus.PENDING)).thenReturn(0L);
 
         HrmsDashboardSummaryDTO result = service.getSummary();
 

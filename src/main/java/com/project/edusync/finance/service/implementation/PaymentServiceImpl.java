@@ -11,8 +11,11 @@ import com.project.edusync.finance.model.entity.Payment;
 import com.project.edusync.finance.model.enums.InvoiceStatus;
 import com.project.edusync.finance.model.enums.PaymentMethod;
 import com.project.edusync.finance.model.enums.PaymentStatus;
+import com.project.edusync.finance.model.enums.JournalReferenceType;
+import com.project.edusync.finance.repository.AccountRepository;
 import com.project.edusync.finance.repository.InvoiceRepository;
 import com.project.edusync.finance.repository.PaymentRepository;
+import com.project.edusync.finance.service.GeneralLedgerService;
 import com.project.edusync.finance.service.PaymentService;
 import com.project.edusync.dashboard.model.DashboardEvent;
 import com.project.edusync.dashboard.service.DashboardEventService;
@@ -35,6 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -47,11 +52,25 @@ public class PaymentServiceImpl implements PaymentService {
     private final ModelMapper modelMapper; // We keep it for other future methods
     private final RazorpayClient razorpayClient;
     private final DashboardEventService dashboardEventService;
+    private final GeneralLedgerService generalLedgerService;
+    private final AccountRepository accountRepository;
 
     @Value("${app.razorpay.key-id}")
     private String razorpayKeyId;
     @Value("${app.razorpay.key-secret}")
     private String razorpayKeySecret;
+
+    /**
+     * GL account codes used for payment auto-posting.
+     * These must exist in the COA (seeded via AccountController /seed endpoint).
+     * 1120 = Bank — Main Account (debit on payment received)
+     * 1130 = Online Gateway Float (debit on online payment)
+     * 4110 = Tuition Fee Revenue (credit — generic fee income)
+     */
+    private static final String BANK_ACCOUNT_CODE      = "1120";
+    private static final String GATEWAY_ACCOUNT_CODE   = "1130";
+    private static final String FEE_REVENUE_CODE       = "4110";
+    private static final Long   DEFAULT_SCHOOL_ID      = 1L;
 
     @Override
     @Transactional
@@ -124,7 +143,11 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
         dashboardEventService.pushEvent(event);
 
-        // 6. Return the DTO for the new payment
+        // 6. Auto-post GL double-entry: Debit Bank, Credit Fee Revenue
+        tryPostGLEntry(savedPayment, payment.getPaymentMethod() == PaymentMethod.ONLINE
+                ? GATEWAY_ACCOUNT_CODE : BANK_ACCOUNT_CODE, FEE_REVENUE_CODE);
+
+        // 7. Return the DTO for the new payment
         return paymentMapper.toDto(savedPayment);
     }
 
@@ -281,8 +304,52 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
         dashboardEventService.pushEvent(event);
 
+        // Auto-post GL double-entry: Debit Online Gateway Float, Credit Fee Revenue
+        tryPostGLEntry(savedPayment, GATEWAY_ACCOUNT_CODE, FEE_REVENUE_CODE);
+
         return paymentMapper.toDto(savedPayment);
     }
 
+    /**
+     * Posts a GL journal entry for a successful payment.
+     * Fails silently with a warning log to avoid rolling back the payment transaction.
+     * GL can be reconciled later if needed.
+     */
+    private void tryPostGLEntry(Payment payment, String debitAccountCode, String creditAccountCode) {
+        try {
+            var debitOpt  = accountRepository.findByCodeAndSchoolId(debitAccountCode,  DEFAULT_SCHOOL_ID);
+            var creditOpt = accountRepository.findByCodeAndSchoolId(creditAccountCode, DEFAULT_SCHOOL_ID);
+            if (debitOpt.isEmpty() || creditOpt.isEmpty()) {
+                log.warn("GL auto-post skipped for Payment #{}: COA not yet seeded.", payment.getPaymentId());
+                return;
+            }
+            generalLedgerService.autoPostEntry(
+                    payment.getPaymentDate() != null ? payment.getPaymentDate().toLocalDate() : java.time.LocalDate.now(),
+                    "Fee Payment — Invoice #" + payment.getInvoice().getId() + " | Student STU-" + payment.getStudent().getId(),
+                    JournalReferenceType.PAYMENT,
+                    payment.getPaymentId().longValue(),
+                    debitOpt.get().getId(),
+                    creditOpt.get().getId(),
+                    payment.getAmountPaid(),
+                    DEFAULT_SCHOOL_ID
+            );
+            log.info("GL entry posted for Payment #{}", payment.getPaymentId());
+        } catch (Exception ex) {
+            log.error("GL auto-post FAILED for Payment #{}: {}", payment.getPaymentId(), ex.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PaymentResponseDTO> getPaymentsForStudent(Long studentId) {
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new StudentNotFoundException("Student not found with student ID: " + studentId));
+
+        List<Payment> payments = paymentRepository.findByStudent(student);
+        return payments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
+                .map(paymentMapper::toDto)
+                .toList();
+    }
 }
 

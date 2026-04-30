@@ -8,7 +8,6 @@ target/
 # Contains local secrets and keys.
 # DO NOT commit this file to Git!
 .env
-
 /node_modules
 
 # Log folder
