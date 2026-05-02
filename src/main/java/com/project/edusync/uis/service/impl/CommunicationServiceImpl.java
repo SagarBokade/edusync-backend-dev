@@ -36,10 +36,13 @@ public class CommunicationServiceImpl implements CommunicationService {
     @Override
     @Transactional
     public StudentMessageDTO sendMessage(Long senderUserId, Long studentId, StudentMessageRequestDTO request) {
-        User sender = userRepository.findByIdAsLong(senderUserId).orElseThrow(() -> new IllegalArgumentException("Sender user not found"));
-        User receiver = userRepository.findByIdAsLong(request.getReceiverUserId()).orElseThrow(() -> new IllegalArgumentException("Receiver user not found"));
+        User sender = userRepository.findByIdAsLong(senderUserId)
+                .orElseThrow(() -> new IllegalArgumentException("Sender user not found"));
+        User receiver = userRepository.findByIdAsLong(request.getReceiverUserId())
+                .orElseThrow(() -> new IllegalArgumentException("Receiver user not found"));
 
-        Student student = studentRepository.findById(studentId).orElseThrow(() -> new IllegalArgumentException("Student not found"));
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new IllegalArgumentException("Student not found"));
 
         // Determine roles
         var senderGuardianOpt = guardianRepository.findByUserProfile_User_Id(senderUserId);
@@ -53,14 +56,20 @@ public class CommunicationServiceImpl implements CommunicationService {
                 throw new IllegalArgumentException("Guardian not linked to student");
             }
 
-            // check receiver is staff and teaches student
+            // check receiver is staff and teaches student or is class teacher
             var receiverStaffOpt = staffRepository.findByUserProfile_User_Id(receiver.getId());
             if (receiverStaffOpt.isEmpty()) {
                 throw new IllegalArgumentException("Receiver is not staff/teacher");
             }
             Staff staff = receiverStaffOpt.get();
+            boolean isTeacher = false;
             var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staff.getId(), student.getSection().getId());
-            if (schedules == null || schedules.isEmpty()) {
+            if (schedules != null && !schedules.isEmpty()) {
+                isTeacher = true;
+            } else if (student.getSection().getClassTeacher() != null && student.getSection().getClassTeacher().getId().equals(staff.getId())) {
+                isTeacher = true;
+            }
+            if (!isTeacher) {
                 throw new IllegalArgumentException("Teacher is not associated with this student");
             }
         } else if (senderStaffOpt.isPresent()) {
@@ -75,9 +84,15 @@ public class CommunicationServiceImpl implements CommunicationService {
                 throw new IllegalArgumentException("Guardian not linked to student");
             }
 
-            // check that teacher teaches this student
+            // check that teacher teaches this student or is class teacher
+            boolean isTeacher = false;
             var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staff.getId(), student.getSection().getId());
-            if (schedules == null || schedules.isEmpty()) {
+            if (schedules != null && !schedules.isEmpty()) {
+                isTeacher = true;
+            } else if (student.getSection().getClassTeacher() != null && student.getSection().getClassTeacher().getId().equals(staff.getId())) {
+                isTeacher = true;
+            }
+            if (!isTeacher) {
                 throw new IllegalArgumentException("Teacher not associated with this student");
             }
         } else {
@@ -94,7 +109,8 @@ public class CommunicationServiceImpl implements CommunicationService {
 
         StudentMessage saved = studentMessageRepository.save(message);
 
-        return new StudentMessageDTO(saved.getId(), saved.getSender().getId(), saved.getReceiver().getId(), saved.getStudent().getId(), saved.getContent(), saved.getSentAt(), saved.isRead());
+        return new StudentMessageDTO(saved.getId(), saved.getSender().getId(), saved.getReceiver().getId(),
+                saved.getStudent().getId(), saved.getContent(), saved.getSentAt(), saved.isRead());
     }
 
     @Override
@@ -103,7 +119,8 @@ public class CommunicationServiceImpl implements CommunicationService {
         // Authorization: user must be guardian of student or teacher of student
         var guardianOpt = guardianRepository.findByUserProfile_User_Id(userId);
         var staffOpt = staffRepository.findByUserProfile_User_Id(userId);
-        Student student = studentRepository.findById(studentId).orElseThrow(() -> new IllegalArgumentException("Student not found"));
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new IllegalArgumentException("Student not found"));
 
         boolean authorized = false;
         if (guardianOpt.isPresent()) {
@@ -111,17 +128,26 @@ public class CommunicationServiceImpl implements CommunicationService {
             authorized = rel.isPresent();
         }
         if (!authorized && staffOpt.isPresent()) {
-            var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staffOpt.get().getId(), student.getSection().getId());
-            authorized = schedules != null && !schedules.isEmpty();
+            Staff staff = staffOpt.get();
+            var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staff.getId(), student.getSection().getId());
+            authorized = (schedules != null && !schedules.isEmpty()) || 
+                         (student.getSection().getClassTeacher() != null && student.getSection().getClassTeacher().getId().equals(staff.getId()));
         }
-        if (!authorized) throw new IllegalArgumentException("User not authorized to view messages for this student");
+        if (!authorized)
+            throw new IllegalArgumentException("User not authorized to view messages for this student");
 
-        List<com.project.edusync.uis.model.entity.messaging.StudentMessage> msgs = studentMessageRepository.findConversation(studentId, userId, otherUserId);
+        List<com.project.edusync.uis.model.entity.messaging.StudentMessage> msgs = studentMessageRepository
+                .findConversation(studentId, userId, otherUserId);
 
         return msgs.stream()
-                .map(m -> new StudentMessageDTO(m.getId(), m.getSender().getId(), m.getReceiver().getId(), m.getStudent().getId(), m.getContent(), m.getSentAt(), m.isRead()))
+                .map(m -> new StudentMessageDTO(m.getId(), m.getSender().getId(), m.getReceiver().getId(),
+                        m.getStudent().getId(), m.getContent(), m.getSentAt(), m.isRead()))
                 .toList();
     }
+
+    @Override
+    @Transactional
+    public void markConversationAsRead(Long userId, Long studentId, Long otherUserId) {
+        studentMessageRepository.markAsRead(studentId, userId, otherUserId);
+    }
 }
-
-

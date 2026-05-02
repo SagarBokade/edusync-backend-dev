@@ -9,5 +9,5 @@ public class StudentContactDTO {
     private Long userId;
     private String name;
     private String role;
+    private int unreadCount;
 }
-

@@ -10,6 +10,7 @@ import com.project.edusync.uis.model.entity.StudentGuardianRelationship;
 import com.project.edusync.uis.repository.GuardianRepository;
 import com.project.edusync.uis.repository.StudentGuardianRelationshipRepository;
 import com.project.edusync.uis.repository.StudentRepository;
+import com.project.edusync.uis.repository.UserProfileRepository;
 import com.project.edusync.uis.service.DashboardAggregatorService;
 import com.project.edusync.uis.service.GuardianDashboardService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,9 @@ import com.project.edusync.uis.model.dto.leave.StudentLeaveApplicationResponseDT
 import com.project.edusync.uis.model.entity.StudentLeaveApplication;
 import com.project.edusync.uis.repository.StudentLeaveApplicationRepository;
 import com.project.edusync.uis.model.enums.StudentLeaveStatus;
+import com.project.edusync.uis.repository.StudentMessageRepository;
+import java.time.ZoneId;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +38,8 @@ public class GuardianDashboardServiceImpl implements GuardianDashboardService {
     private final StudentRepository studentRepository;
     private final DashboardAggregatorService dashboardAggregatorService;
     private final StudentLeaveApplicationRepository studentLeaveApplicationRepository;
+    private final StudentMessageRepository studentMessageRepository;
+    private final UserProfileRepository userProfileRepository;
 
     /**
      * Returns dashboard intelligence for all students linked to the guardian.
@@ -124,6 +130,68 @@ public class GuardianDashboardServiceImpl implements GuardianDashboardService {
                 saved.getStatus(),
                 saved.isHalfDay()
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OverviewResponseDTO.AnnouncementDTO> getNotifications(Long userId) {
+        // 1. Get messages
+        List<OverviewResponseDTO.AnnouncementDTO> notifications = new ArrayList<>();
+        
+        studentMessageRepository.findUnreadByReceiver(userId).forEach(m -> {
+            String senderName = userProfileRepository.findByUser(m.getSender())
+                .map(p -> p.getFirstName())
+                .orElse("Staff");
+                
+            notifications.add(new OverviewResponseDTO.AnnouncementDTO(
+                m.getId(),
+                "New message from " + senderName,
+                m.getSentAt().atZone(ZoneId.systemDefault()).toInstant(),
+                OverviewResponseDTO.AnnouncementType.ALERT
+            ));
+        });
+
+        // 2. Get other alerts from linked students
+        Guardian guardian = guardianRepository.findByUserProfile_User_Id(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Guardian not found"));
+        
+        List<StudentGuardianRelationship> relationships = relationshipRepository.findByGuardian(guardian);
+        for (StudentGuardianRelationship rel : relationships) {
+            Student student = rel.getStudent();
+            OverviewResponseDTO overview = dashboardAggregatorService.getDashboardOverview(student.getUserProfile().getUser().getId(), null);
+            
+            // Add PTM/Events
+            if (overview.recentAnnouncements() != null) {
+                notifications.addAll(overview.recentAnnouncements());
+            }
+            
+            // Add Homework/Assignments
+            if (overview.pendingAssignments() != null) {
+                for (var assignment : overview.pendingAssignments()) {
+                    notifications.add(new OverviewResponseDTO.AnnouncementDTO(
+                        assignment.id(),
+                        "Homework: " + assignment.title() + " (" + assignment.subject() + ")",
+                        assignment.dueDate(),
+                        OverviewResponseDTO.AnnouncementType.ACADEMIC
+                    ));
+                }
+            }
+            
+            // Add Fees
+            if (overview.kpis() != null && overview.kpis().totalOverdueFees() != null && overview.kpis().totalOverdueFees().compareTo(java.math.BigDecimal.ZERO) > 0) {
+                notifications.add(new OverviewResponseDTO.AnnouncementDTO(
+                    System.currentTimeMillis() + student.getId(),
+                    "Fees Overdue for " + student.getUserProfile().getFirstName() + ": " + overview.kpis().totalOverdueFees(),
+                    java.time.Instant.now(),
+                    OverviewResponseDTO.AnnouncementType.ALERT
+                ));
+            }
+        }
+
+        return notifications.stream()
+            .sorted((a, b) -> b.date().compareTo(a.date()))
+            .limit(20)
+            .collect(Collectors.toList());
     }
 }
 

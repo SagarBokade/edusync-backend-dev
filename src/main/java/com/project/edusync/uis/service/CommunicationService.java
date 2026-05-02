@@ -9,5 +9,6 @@ public interface CommunicationService {
     StudentMessageDTO sendMessage(Long senderUserId, Long studentId, StudentMessageRequestDTO request);
 
     List<StudentMessageDTO> getConversation(Long userId, Long studentId, Long otherUserId);
+    void markConversationAsRead(Long userId, Long studentId, Long otherUserId);
 }
 

@@ -223,5 +223,14 @@ public class GuardianDashboardController {
 
         return ResponseEntity.ok(responseDto);
     }
+
+    @GetMapping("/notifications")
+    @PreAuthorize("hasRole('GUARDIAN')")
+    @Operation(summary = "Get aggregated notifications for guardian", description = "Combines messages, meeting alerts, assignments, and fees.", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<List<OverviewResponseDTO.AnnouncementDTO>> getNotifications() {
+        Long userId = authUtil.getCurrentUserId();
+        List<OverviewResponseDTO.AnnouncementDTO> notifications = guardianDashboardService.getNotifications(userId);
+        return ResponseEntity.ok(notifications);
+    }
 }
 

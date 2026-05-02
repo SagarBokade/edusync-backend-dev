@@ -11,4 +11,6 @@ public interface GuardianDashboardService {
 
     // Apply for leave on behalf of a linked child (guardian action)
     com.project.edusync.uis.model.dto.leave.StudentLeaveApplicationResponseDTO applyForLeave(Long guardianUserId, Long childId, com.project.edusync.uis.model.dto.leave.StudentLeaveApplicationRequestDTO request);
+
+    List<OverviewResponseDTO.AnnouncementDTO> getNotifications(Long userId);
 }

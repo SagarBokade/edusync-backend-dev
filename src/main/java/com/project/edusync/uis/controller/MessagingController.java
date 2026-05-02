@@ -37,12 +37,14 @@ public class MessagingController {
     private final StudentGuardianRelationshipRepository relationshipRepository;
     private final StaffRepository staffRepository;
     private final ScheduleRepository scheduleRepository;
+    private final com.project.edusync.uis.repository.StudentMessageRepository studentMessageRepository;
 
     @PostMapping("/messaging/student/{studentId}/messages")
     @PreAuthorize("hasAnyRole('GUARDIAN','TEACHER')")
     @Operation(summary = "Send message (teacher <-> guardian) regarding a student", security = @SecurityRequirement(name = "bearerAuth"))
     @Transactional
-    public ResponseEntity<StudentMessageDTO> sendMessage(@PathVariable Long studentId, @Valid @RequestBody StudentMessageRequestDTO request) {
+    public ResponseEntity<StudentMessageDTO> sendMessage(@PathVariable Long studentId,
+            @Valid @RequestBody StudentMessageRequestDTO request) {
         Long userId = authUtil.getCurrentUserId();
         StudentMessageDTO dto = communicationService.sendMessage(userId, studentId, request);
         return ResponseEntity.ok(dto);
@@ -52,11 +54,13 @@ public class MessagingController {
     @PreAuthorize("hasAnyRole('GUARDIAN','TEACHER')")
     @Operation(summary = "Get conversation for a student between current user and other user", security = @SecurityRequirement(name = "bearerAuth"))
     @Transactional(readOnly = true)
-    public ResponseEntity<List<StudentMessageDTO>> getConversation(@PathVariable Long studentId, @PathVariable Long otherUserId) {
+    public ResponseEntity<List<StudentMessageDTO>> getConversation(@PathVariable Long studentId,
+            @PathVariable Long otherUserId) {
         Long userId = authUtil.getCurrentUserId();
         List<StudentMessageDTO> conv = communicationService.getConversation(userId, studentId, otherUserId);
         return ResponseEntity.ok(conv);
     }
+
     @GetMapping("/messaging/student/{studentId}/teachers")
     @PreAuthorize("hasRole('GUARDIAN')")
     @Operation(summary = "Get list of teachers who teach the student's section (Guardian only)", security = @SecurityRequirement(name = "bearerAuth"))
@@ -81,15 +85,33 @@ public class MessagingController {
         }
 
         var schedules = scheduleRepository.findAllActiveWithReferencesBySectionUuid(student.getSection().getUuid());
-        var contacts = schedules.stream()
+        var contactsList = new java.util.ArrayList<>(schedules.stream()
                 .map(s -> s.getTeacher().getStaff())
                 .filter(java.util.Objects::nonNull)
+                .toList());
+
+        if (student.getSection().getClassTeacher() != null && !contactsList.contains(student.getSection().getClassTeacher())) {
+            contactsList.add(student.getSection().getClassTeacher());
+        }
+
+        var contacts = contactsList.stream()
                 .distinct()
-                .map(staff -> new StudentContactDTO(
-                        staff.getUser() != null ? staff.getUser().getId() : null,
-                        staff.getUserProfile() != null ? staff.getUserProfile().getFirstName() + " " + staff.getUserProfile().getLastName() : null,
-                        staff.getStaffType() != null ? staff.getStaffType().name() : "TEACHER"
-                ))
+                .map(staff -> {
+                    Long staffUserId = staff.getUserProfile() != null && staff.getUserProfile().getUser() != null 
+                            ? staff.getUserProfile().getUser().getId() 
+                            : null;
+                    int unreadCount = 0;
+                    if (staffUserId != null) {
+                        unreadCount = studentMessageRepository.countByStudent_IdAndReceiver_IdAndSender_IdAndReadFalse(studentId, userId, staffUserId);
+                    }
+                    return new StudentContactDTO(
+                            staffUserId,
+                            staff.getUserProfile() != null
+                                    ? staff.getUserProfile().getFirstName() + " " + staff.getUserProfile().getLastName()
+                                    : null,
+                            staff.getStaffType() != null ? staff.getStaffType().name() : "TEACHER",
+                            unreadCount);
+                })
                 .toList();
 
         return ResponseEntity.ok(contacts);
@@ -113,8 +135,16 @@ public class MessagingController {
         }
         Student student = studentOpt.get();
 
-        var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staff.getId(), student.getSection().getId());
-        if (schedules == null || schedules.isEmpty()) {
+        boolean isTeacher = false;
+        var schedules = scheduleRepository.findAllActiveByTeacherStaffIdAndSectionId(staff.getId(),
+                student.getSection().getId());
+        if (schedules != null && !schedules.isEmpty()) {
+            isTeacher = true;
+        } else if (student.getSection().getClassTeacher() != null && student.getSection().getClassTeacher().getId().equals(staff.getId())) {
+            isTeacher = true;
+        }
+
+        if (!isTeacher) {
             return ResponseEntity.status(404).build();
         }
 
@@ -123,14 +153,33 @@ public class MessagingController {
                 .map(rel -> rel.getGuardian())
                 .filter(java.util.Objects::nonNull)
                 .distinct()
-                .map(g -> new StudentContactDTO(
-                        g.getUserProfile() != null && g.getUserProfile().getUser() != null ? g.getUserProfile().getUser().getId() : null,
-                        g.getUserProfile() != null ? g.getUserProfile().getFirstName() + " " + g.getUserProfile().getLastName() : null,
-                        "GUARDIAN"
-                ))
+                .map(g -> {
+                    Long guardianUserId = g.getUserProfile() != null && g.getUserProfile().getUser() != null
+                            ? g.getUserProfile().getUser().getId()
+                            : null;
+                    int unreadCount = 0;
+                    if (guardianUserId != null) {
+                        unreadCount = studentMessageRepository.countByStudent_IdAndReceiver_IdAndSender_IdAndReadFalse(studentId, userId, guardianUserId);
+                    }
+                    return new StudentContactDTO(
+                            guardianUserId,
+                            g.getUserProfile() != null
+                                    ? g.getUserProfile().getFirstName() + " " + g.getUserProfile().getLastName()
+                                    : null,
+                            "GUARDIAN",
+                            unreadCount);
+                })
                 .toList();
 
         return ResponseEntity.ok(contacts);
     }
-}
 
+    @PostMapping("/messaging/student/{studentId}/read/{otherUserId}")
+    @PreAuthorize("hasAnyRole('GUARDIAN','TEACHER')")
+    @Operation(summary = "Mark messages as read for a conversation", security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<Void> markAsRead(@PathVariable Long studentId, @PathVariable Long otherUserId) {
+        Long userId = authUtil.getCurrentUserId();
+        communicationService.markConversationAsRead(userId, studentId, otherUserId);
+        return ResponseEntity.ok().build();
+    }
+}
