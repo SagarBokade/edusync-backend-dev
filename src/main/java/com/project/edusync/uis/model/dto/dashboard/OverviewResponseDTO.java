@@ -15,7 +15,8 @@ public record OverviewResponseDTO(
         List<ScheduleItemDTO> todaySchedule,
         List<PendingAssignmentDTO> pendingAssignments,
         List<PerformanceTrendDTO> performanceTrend,
-        List<AnnouncementDTO> recentAnnouncements
+        List<AnnouncementDTO> recentAnnouncements,
+        List<SubjectPerformanceDTO> currentSubjects
 ) {
 
     public enum ScheduleStatus {
@@ -79,6 +80,14 @@ public record OverviewResponseDTO(
             String title,
             Instant date,
             AnnouncementType type
+    ) {}
+
+    public record SubjectPerformanceDTO(
+            String subject,
+            BigDecimal marks,
+            BigDecimal maxMarks,
+            String grade,
+            String teacherRemarks
     ) {}
 }
 

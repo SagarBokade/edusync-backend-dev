@@ -57,6 +57,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         jdbc:
           batch_size: ${HIBERNATE_BATCH_SIZE:50}
+          time_zone: Asia/Kolkata
         order_inserts: true
         order_updates: true
   flyway:

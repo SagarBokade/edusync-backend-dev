@@ -56,6 +56,8 @@ public class StudentDashboardServiceImpl implements StudentDashboardService, Das
     private final AttendanceAuditRepository attendanceAuditRepository;
     private final ExamScheduleRepository examScheduleRepository;
     private final StudentMarkRepository studentMarkRepository;
+    private final com.project.edusync.uis.repository.StudentMessageRepository studentMessageRepository;
+    private final com.project.edusync.uis.repository.UserProfileRepository userProfileRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -146,7 +148,7 @@ public class StudentDashboardServiceImpl implements StudentDashboardService, Das
                     CompletableFuture.supplyAsync(() -> buildPerformanceTrend(student.getId()), executor);
 
             CompletableFuture<List<OverviewResponseDTO.AnnouncementDTO>> announcementsFuture =
-                    CompletableFuture.supplyAsync(() -> buildRecentAnnouncements(student.getId()), executor);
+                    CompletableFuture.supplyAsync(() -> buildRecentAnnouncements(student.getId(), userId), executor);
 
             CompletableFuture.allOf(profileFuture, kpiBaseFuture, todayScheduleFuture, pendingAssignmentsFuture, trendFuture, announcementsFuture).join();
 
@@ -171,7 +173,8 @@ public class StudentDashboardServiceImpl implements StudentDashboardService, Das
                     todayScheduleFuture.join(),
                     pendingAssignments,
                     performanceTrend,
-                    announcementsFuture.join()
+                    announcementsFuture.join(),
+                    List.of() // currentSubjects fallback to empty for now
             );
 
             long elapsedMs = (System.nanoTime() - startedAt) / 1_000_000;
@@ -336,15 +339,37 @@ public class StudentDashboardServiceImpl implements StudentDashboardService, Das
                 .toList();
     }
 
-    private List<OverviewResponseDTO.AnnouncementDTO> buildRecentAnnouncements(Long studentId) {
-        return attendanceAuditRepository.findByDailyAttendance_StudentIdOrderByCreatedAtDesc(studentId, PageRequest.of(0, 5)).stream()
-                .map(audit -> new OverviewResponseDTO.AnnouncementDTO(
-                        audit.getId(),
-                        "%s: %s".formatted(audit.getActionType(), safe(audit.getColumnName())),
-                        toInstant(audit.getCreatedAt()),
-                        OverviewResponseDTO.AnnouncementType.ALERT
-                ))
-                .toList();
+    private List<OverviewResponseDTO.AnnouncementDTO> buildRecentAnnouncements(Long studentId, Long userId) {
+        final List<OverviewResponseDTO.AnnouncementDTO> announcements = new java.util.ArrayList<>();
+        
+        // 1. Get messages sent directly to the student
+        List<com.project.edusync.uis.model.entity.messaging.StudentMessage> unread = studentMessageRepository.findUnreadByReceiver(userId);
+        for (var m : unread) {
+            String senderName = userProfileRepository.findByUser(m.getSender())
+                    .map(p -> p.getFirstName() + " " + p.getLastName())
+                    .orElse("Staff");
+            announcements.add(new OverviewResponseDTO.AnnouncementDTO(
+                    m.getId(),
+                    "Notice from " + senderName + ": " + m.getContent(),
+                    m.getSentAt().atZone(ZoneId.systemDefault()).toInstant(),
+                    OverviewResponseDTO.AnnouncementType.ACADEMIC
+            ));
+        }
+
+        // 2. Get attendance audits
+        var audits = attendanceAuditRepository.findByDailyAttendance_StudentIdOrderByCreatedAtDesc(studentId, PageRequest.of(0, 5));
+        for (var audit : audits) {
+            announcements.add(new OverviewResponseDTO.AnnouncementDTO(
+                    audit.getId(),
+                    "%s: %s".formatted(audit.getActionType(), safe(audit.getColumnName())),
+                    toInstant(audit.getCreatedAt()),
+                    OverviewResponseDTO.AnnouncementType.ALERT
+            ));
+        }
+                
+        // Sort by date descending and limit to 10
+        announcements.sort((a, b) -> b.date().compareTo(a.date()));
+        return announcements.size() > 10 ? announcements.subList(0, 10) : announcements;
     }
 
     private IntelligenceResponseDTO.AcademicPulseDTO buildAcademicPulse(Student student, Long academicYearId) {
